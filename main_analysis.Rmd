@@ -87,7 +87,7 @@ data_raw_TD <- bind_rows(data_raw_TD) %>%
               prop = mean(value, na.rm = TRUE)) 
 
 #feather::write_feather(data_raw_TD,"saved_data/data_raw_TD.feather")
-data_raw_TD <- feather::read_feather("saved_data/data_raw_TD.feather")%>%
+#data_raw_TD <- feather::read_feather("saved_data/data_raw_TD.feather")%>%
   filter(form == "WS")
 ```
 
@@ -195,25 +195,27 @@ data_aoa_AS <- feather::read_feather("saved_data/data_aoa_AS.feather")
 ```
 
 ```{r}
-data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
+data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD_2.feather")%>%
   filter(measure == "produces")
 
 all_aoa <- inner_join(data_aoa_TD,data_aoa_AS, by = c("uni_lemma" = "definition"))%>%
   rename(aoa_TD = aoa,
          aoa_AS_1 = aoa_1,
          aoa_AS_2 = aoa_2)%>%
+  filter(aoa_TD > 0)%>% # note that i've applied filter here 
   mutate(diff_1 = aoa_AS_1 - aoa_TD,
-         diff_2 = aoa_AS_2 - aoa_TD)%>%
-  arrange(desc(diff_2)) 
+         diff_2 = aoa_AS_2 - aoa_TD,
+         diff_2_perc = (aoa_AS_2 - aoa_TD)/aoa_TD)%>%
+  arrange(desc(diff_2_perc)) 
   
 most_diff_aoa <-  all_aoa %>% head(10)
 least_diff_aoa <- tail(all_aoa, 10)
 
 diff_aoa <- bind_rows(least_diff_aoa,most_diff_aoa)
 
-ggplot(diff_aoa, aes(x = lexical_class, y = diff_2))+
+ggplot(diff_aoa, aes(x = lexical_class, y = diff_2_perc))+
   geom_point(alpha = 0.5)+
-  labs(y = "Difference in AoA", x = "Lexical Class", title = "Top 10 and bottom 10 in AoA difference")+
+  labs(y = "Percentage Change in AoA", x = "Lexical Class", title = "Top & Bottom 10 in Percentage difference in AoA")+
   ggrepel::geom_label_repel(aes(label = uni_lemma), force = 3, alpha = 0.9, size = 3.5, col = "darkblue")+
   theme_bw()
   
@@ -446,9 +448,47 @@ ggplot(play_AS_clean, aes(x = age, y = prop_2))+
 
 ```
 
-
+make data growth dataframe
 
 ```{r}
-data_growth <- feather::read_feather("saved_data/data_growth.feather") 
-```
+make_data_growth <- function(word_aoa) {
+  
+  measure <- unique(word_aoa$measure)
+  lang <- unique(word_aoa$language)
+    
+  ages<- (word_aoa %>%
+    arrange(age) %>%
+    group_by(age) %>%
+    summarise(n = n()))$age
+  
+  df <- data.frame()
+  for (i in ages) {
+    rem_words <- word_aoa %>% filter(age >= i)
+    rem_lemma <- c(rem_words$uni_lemma)
+    rem_def <- c(rem_words$definition)
+    rem_item<- c(rem_words$item)
+    corr_age <- rep(i, times = length(rem_lemma))
+    curr_df <- data.frame(corr_age, rem_item, rem_lemma, rem_def)
+    df <- rbind(df, curr_df)
+  }  
+  df <- df %>% rename(uni_lemma = rem_lemma, definition=rem_def, item=rem_item)%>%
+    left_join(word_aoa %>% select(item, age)) %>%
+    mutate(learned = as.numeric(age == corr_age)) %>%
+    select(corr_age, item, definition, uni_lemma,learned) %>%
+    rename(age = corr_age) %>%
+    arrange(age, item) %>%
+    mutate(language = lang,
+           measure = measure)
+  return(df)
+}
 
+aoa_by_measure_lang <- all_aoa %>%
+  mutate(age = round(aoa_AS_2)) %>%
+  select(-form, -aoa_AS_2) %>%
+  split(paste(.$language, .$measure))
+  
+data_growth <- map(aoa_by_measure_lang, make_data_growth) %>%
+  bind_rows() # start with 24 since AoA for Children with AS start with 24.# used common_word dataset 
+
+feather::write_feather(data_growth,"saved_data/data_growth_AS.feather") # take out data_growth(TD) when done 
+```
