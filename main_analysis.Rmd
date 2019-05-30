@@ -302,6 +302,52 @@ ggplot(data_children_2,
 ```
 
 
+exploratory data analysis on AS children 
+
+```{r}
+count <- data_raw_AS %>%
+  group_by(age)%>%
+  summarise(N = n())
+
+ggplot(count, aes(x = age, y = N))+
+  geom_line()+
+  labs(y = "Number of Children on Record", title = "Number of Children with Autism on Record")
+
+count_a15 <- count %>% filter(N > 15) # count above 10 
+
+data_median_n <- left_join(count_a15, data_clean_AS, by = "age") %>%
+  filter(value_2 == TRUE)%>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition)) %>%
+  group_by(age) %>%
+  summarise(value = median(n))
+
+data_median_n %>%
+  filter(age <= 30, age >= 16)%>%
+  ggplot(aes(x = age, y = value))+
+  geom_point(col = "dodgerblue")+
+  geom_smooth()+
+  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison", caption = "Orange: TD, Blue: AS. Without data point that have less than 15 obersvations")+
+  geom_smooth(data = data_median_TD, aes(x = age, y = production), color = "darkorange")+
+  theme_classic()
+
+data_children_n <- left_join(count_a15, data_clean_AS, by = "age")%>%
+  filter(value_2 == TRUE) %>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition))
+
+ggplot(data_children_n,
+        aes(x  = age, y = n)) +
+  geom_jitter(width = .4, size = 1, alpha = .4) +
+  labs("Production (number of words)", title = "Production vs. Age in AS children",caption = "Without data point that have less than 15 obersvations") +
+  ylim(c(0, 680)) + 
+  theme(legend.position = "bottom")+
+  geom_quantile(quantiles = taus)
+
+
+```
+
+
 Two word comparison
 
 ```{r}
@@ -377,51 +423,6 @@ ggplot(play_AS, aes(x = age, y = prop_2))+
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme_classic()
 
-
-```
-
-exploratory data analysis on AS children 
-
-```{r}
-count <- data_raw_AS %>%
-  group_by(age)%>%
-  summarise(N = n())
-
-ggplot(count, aes(x = age, y = N))+
-  geom_line()+
-  labs(y = "Number of Children on Record", title = "Number of Children with Autism on Record")
-
-count_a15 <- count %>% filter(N > 15) # count above 10 
-
-data_median_n <- left_join(count_a15, data_clean_AS, by = "age") %>%
-  filter(value_2 == TRUE)%>%
-  group_by(GUID,age)%>%
-  summarise(n = n_distinct(definition)) %>%
-  group_by(age) %>%
-  summarise(value = median(n))
-
-data_median_n %>%
-  filter(age <= 30, age >= 16)%>%
-  ggplot(aes(x = age, y = value))+
-  geom_point(col = "dodgerblue")+
-  geom_smooth()+
-  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison", caption = "Orange: TD, Blue: AS. Without data point that have less than 15 obersvations")+
-  geom_smooth(data = data_median_TD, aes(x = age, y = production), color = "darkorange")+
-  theme_classic()
-
-data_children_n <- left_join(count_a15, data_clean_AS, by = "age")%>%
-  filter(value_2 == TRUE) %>%
-  group_by(GUID,age)%>%
-  summarise(n = n_distinct(definition))
-
-ggplot(data_children_n,
-        aes(x  = age, y = n)) +
-  geom_jitter(width = .4, size = 1, alpha = .4) +
-  labs("Production (number of words)", title = "Production vs. Age in AS children",caption = "Without data point that have less than 15 obersvations") +
-  ylim(c(0, 680)) + 
-  theme(legend.position = "bottom")+
-  geom_quantile(quantiles = taus)
-
 ggplot(ball_AS_clean, aes(x = age, y = prop_2))+
   geom_point()+
   geom_smooth(method = 'loess')+
@@ -434,7 +435,7 @@ ggplot(ball_AS_clean, aes(x = age, y = prop_2))+
 
 ggplot(play_AS_clean, aes(x = age, y = prop_2))+
   geom_point()+
-  geom_smooth(method = 'loess')+
+  geom_smooth(methosd = 'loess')+
   geom_smooth(data = fitted_points_play_TD, aes(x =age, y = fitted_prob), col = "red")+
   geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
   labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 2", caption = "Without data point that have less than 15 obersvations") +
@@ -442,7 +443,9 @@ ggplot(play_AS_clean, aes(x = age, y = prop_2))+
   scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme_classic()
+
 ```
+
 
 
 ```{r}
