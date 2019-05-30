@@ -1,0 +1,451 @@
+---
+title: "Comparison of TD, AS"
+author: "_"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(boot)
+library(purrr)
+library(ggplot2)
+library(ggthemes)
+library(feather)
+library(wordbankr)
+```
+
+Load data_TD, get data_median_TD
+```{r}
+languages = "English (American)"
+
+admins <- get_administration_data() %>%
+  select(data_id, age, language, form, production, comprehension) %>%
+  filter(language %in% languages)
+
+lang_ns <- admins %>% 
+  group_by(language, form) %>% 
+  summarise(n_admins = n())
+
+items <- get_item_data() %>%
+  filter(type == "word") %>%
+  filter(language %in% languages)
+
+num_words <- items %>%
+  group_by(language, form) %>%
+  summarise(n = n())
+
+
+vocab_data <- admins %>%
+  select(data_id, language, form, age, production, comprehension) %>% 
+  left_join(num_words) %>%
+  mutate(no_production = n - production)
+
+data_median_TD <- vocab_data %>%
+  group_by(form, language, age) %>%
+  summarise(production = median(production), 
+            production_prop = median(production/n), 
+            n = n()) %>%
+  left_join(lang_ns) %>%
+  filter(form == "WS")
+```
+
+
+```{r}
+items_by_inst <- split(items, paste(items$language, items$form, sep = "_"))
+
+get_inst_data <- function(inst_items) {
+  inst_lang <- unique(inst_items$language)
+  inst_form <- unique(inst_items$form)
+  inst_admins <- filter(admins, language == inst_lang, form == inst_form)
+  get_instrument_data(language = inst_lang ,
+                      form = inst_form,
+                      administrations = inst_admins,
+                      items = inst_items$item_id,
+                      iteminfo = inst_items) %>%
+    filter(!is.na(age)) %>%
+    mutate(produces = !is.na(value) & value == "produces",
+           understands = !is.na(value) & (value == "understands" | value == "produces")) %>%
+    select(-value) %>%
+    gather(measure, value, produces, understands) %>% # produces and understands are values 
+    filter((measure == "understands" & form == "WG") | (measure == "produces" & form == "WS") ) %>%
+    mutate(language = inst_lang,
+           form = inst_form)
+    
+}
+
+data_raw_TD <- map(items_by_inst, get_inst_data) 
+  
+data_raw_TD <- bind_rows(data_raw_TD) %>%
+  rename(item = num_item_id) %>%
+  group_by(language, form, measure,
+             lexical_category, lexical_class, uni_lemma,  item, definition, age) %>%
+  summarise(num_true = sum(value, na.rm = TRUE),
+              num_false = n() - num_true,
+              prop = mean(value, na.rm = TRUE)) 
+
+#feather::write_feather(data_raw_TD,"saved_data/data_raw_TD.feather")
+data_raw_TD <- feather::read_feather("saved_data/data_raw_TD.feather")%>%
+  filter(form == "WS")
+```
+
+
+Load data_AS
+```{r}
+data_AS <- read.delim("mci_sentences02.txt", header = TRUE, sep = "\t", dec = ".")
+
+# extracting first row as a descriptive dataframe
+description <- data_AS[1:1,]
+description <- as.data.frame(t(description))
+names(description) <- "description"
+
+#using mci_sentences02_id	as a disctincetive id and The NDAR Global Unique Identifier 
+
+data_raw_AS <- data_AS %>%
+  select(c("mci_sentences02_id","subjectkey","interview_age", 21:779)) %>% # starting from 785 is complexity
+  select(-(684:692)) #getting rid of the long questions in the middle
+
+colnames(data_raw_AS) <- as.character(unlist(data_raw_AS[1,])) #unlist the row
+data_raw_AS = data_raw_AS[-1, ]
+
+data_raw_AS<- data_raw_AS %>%
+  rename(id = "mci_sentences02_id",
+         GUID = "The NDAR Global Unique Identifier (GUID) for research subject", 
+         age = "Age in months at the time of the interview/test/sampling/imaging.")%>%
+  mutate(age = as.numeric(as.character(age)))
+
+data_clean_AS <- data_raw_AS %>%
+  gather(key = "definition", value = "value", -c(id,GUID,age))%>%
+  separate(definition, c("category","definition"),sep = "\\. ") %>%
+  mutate_all(na_if,"",)%>% #if blank then fill in NA
+   mutate(value_1 = ifelse(value == 0, FALSE, TRUE),
+          value_2 = ifelse(value == 1|value == 3, TRUE, FALSE))
+
+data_all_AS <- data_clean_AS %>%
+     group_by(category, definition, age) %>%
+       summarise(num_true_1 = sum(value_1, na.rm = TRUE),
+                 num_false_1 = n() - num_true_1,
+                 prop_1 = num_true_1/n(), 
+                 num_true_2 = sum(value_2, na.rm = TRUE),
+                 num_false_2 = n() - num_true_2,
+                 prop_2 = num_true_2/n())
+
+summary(data_all_AS)
+```
+
+Compute Age of Acqusition (AoA) of definitions
+
+```{r}
+fit_inst_measure_uni <- function(inst_measure_uni_data) {
+  ages <- min(inst_measure_uni_data$age):max(inst_measure_uni_data$age)
+  model <- glm(cbind(num_true, num_false) ~ age, family = "binomial",
+               data = inst_measure_uni_data)
+  fit <- predict(model, newdata = data.frame(age = ages), se.fit = TRUE)
+  aoa <- -model$coefficients[["(Intercept)"]] / model$coefficients[["age"]]
+  constants <- inst_measure_uni_data %>%
+    ungroup()%>%
+    select(category, definition) %>%
+    distinct()
+  
+  props <- inst_measure_uni_data %>%
+    ungroup() %>%
+    select(age, prop)
+  
+  data.frame(age = ages,
+             fit_prop = inv.logit(fit$fit),
+             fit_se = fit$se.fit,
+             aoa = aoa, 
+             category = constants$category,
+             definition = constants$definition) %>%
+    left_join(props)
+}
+
+list_by_item_1 <- data_all_AS %>% 
+  rename(num_true = num_true_1,
+         num_false = num_false_1,
+         prop = prop_1)%>%
+  split(paste(.$category,.$definition)) # need comfirmation 
+
+data_aoa_1 <- map(list_by_item_1, fit_inst_measure_uni) %>% 
+  bind_rows()
+
+data_aoa_1 <- data_aoa_1 %>%
+  select(category,definition,aoa) %>%
+  distinct()  # negative values in aoa, same in main_analysis.rmd
+
+list_by_item_2 <- data_all_AS %>% 
+  rename(num_true = num_true_2,
+         num_false = num_false_2,
+         prop = prop_2)%>%
+  split(paste(.$category,.$definition)) # need comfirmation 
+
+data_aoa_2 <- map(list_by_item_2, fit_inst_measure_uni) %>% 
+  bind_rows()
+
+data_aoa_2 <- data_aoa_2 %>%
+  select(category,definition,aoa) %>%
+  distinct()
+
+data_aoa_AS <- inner_join(data_aoa_1,data_aoa_2,by = c("category","definition"))%>%
+  rename(aoa_1 = aoa.x, aoa_2 = aoa.y)
+#feather::write_feather(data_aoa_AS, "saved_data/data_aoa_AS.feather")
+data_aoa_AS <- feather::read_feather("saved_data/data_aoa_AS.feather") 
+```
+
+```{r}
+data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
+  filter(measure == "produces")
+
+all_aoa <- inner_join(data_aoa_TD,data_aoa_AS, by = c("uni_lemma" = "definition"))%>%
+  rename(aoa_TD = aoa,
+         aoa_AS_1 = aoa_1,
+         aoa_AS_2 = aoa_2)%>%
+  mutate(diff_1 = aoa_AS_1 - aoa_TD,
+         diff_2 = aoa_AS_2 - aoa_TD)%>%
+  arrange(desc(diff_2)) 
+  
+most_diff_aoa <-  all_aoa %>% head(10)
+least_diff_aoa <- tail(all_aoa, 10)
+
+diff_aoa <- bind_rows(least_diff_aoa,most_diff_aoa)
+
+ggplot(diff_aoa, aes(x = lexical_class, y = diff_2))+
+  geom_point(alpha = 0.5)+
+  labs(y = "Difference in AoA", x = "Lexical Class", title = "Top 10 and bottom 10 in AoA difference")+
+  ggrepel::geom_label_repel(aes(label = uni_lemma), force = 3, alpha = 0.9, size = 3.5, col = "darkblue")+
+  theme_bw()
+  
+
+ggplot(all_aoa, aes(aoa_TD))+
+  stat_density(geom="line")+
+  geom_density(aes(aoa_AS_1), color = "blue")+
+  geom_density(aes(aoa_AS_2),color = "red")+
+  theme_classic()+
+  labs(x = "AoA", title = "Density plot of Age of Acqusition", caption = "Black: TD, Blue = AS_method_1, Red = AS_method_2")
+
+```
+
+Median Produced comparison 
+
+```{r}
+data_median_1 <- data_clean_AS %>%
+  filter(value_1 == TRUE)%>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition)) %>%
+  group_by(age) %>%
+  summarise(value = median(n))
+
+data_median_2 <- data_clean_AS %>%
+  filter(value_2 == TRUE)%>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition)) %>%
+  group_by(age) %>%
+  summarise(value = median(n))
+
+data_median_AS <- inner_join(data_median_1,data_median_2,by = "age")%>%
+  rename(value_1 = value.x, value_2 = value.y)
+
+data_median_AS %>%
+  filter(age <= 30, age >= 16)%>%
+  ggplot(aes(x = age, y = value_1))+
+  geom_point(col = "dodgerblue")+
+  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison, method 1", caption = "Orange: TD, Blue: AS")+
+  geom_point(data = data_median_TD, aes(x = age, y = production), color = "darkorange")+
+  theme_classic()
+
+data_median_AS %>%
+  filter(age <= 30, age >= 16)%>%
+  ggplot(aes(x = age, y = value_2))+
+  #geom_point(col = "dodgerblue")+
+  geom_smooth()+
+  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison, method 2", caption = "Orange: TD, Blue: AS")+
+  geom_smooth(data = data_median_TD, aes(x = age, y = production), color = "darkorange")+
+  theme_classic()
+
+
+# the methods barely influence the relationship in graph
+```
+
+Percentile graph 
+#box plot when have time
+
+```{r}
+taus <-  c(0.1, 0.25, 0.5, 0.75, 0.9)
+
+data_children_1 <- data_clean_AS %>%
+  filter(value_1 == TRUE) %>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition))
+
+data_children_2 <- data_clean_AS %>%
+  filter(value_2 == TRUE) %>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition))
+
+ggplot(data_children_1,
+        aes(x  = age, y = n)) +
+  geom_jitter(width = .4, size = 1, alpha = .4) +
+  labs(y = "Production (number of words)", title = "Production vs. Age in AS children, method 1") +
+  ylim(c(0, 680)) + 
+  theme(legend.position = "bottom")+
+  geom_quantile(quantiles = taus)
+
+ggplot(data_children_2,
+        aes(x  = age, y = n)) +
+  geom_jitter(width = .4, size = 1, alpha = .4) +
+  labs("Production (number of words)", title = "Production vs. Age in AS children, method 2") +
+  ylim(c(0, 680)) + 
+  theme(legend.position = "bottom")+
+  geom_quantile(quantiles = taus)
+```
+
+
+Two word comparison
+
+```{r}
+ball_AS <- data_all_AS%>%
+  filter(definition == "ball", age <= 60)
+
+ball_AS_clean <- left_join(count_a15, ball_AS, by = "age")
+
+ball_TD <-data_raw_TD %>%
+  filter(definition == "ball")
+
+mod_1<- glm(prop ~ age, family = "binomial",
+               data = ball_TD)
+
+fitted_points_ball_TD <- mod_1 %>%
+  broom::augment()%>%
+  mutate(fitted_prob = 1/(1 + exp(-.fitted)))
+
+ggplot(ball_AS, aes(x = age, y = prop_1))+
+  geom_point()+
+  geom_smooth(se = FALSE,method = 'loess')+
+  geom_point(data = ball_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the noun: Ball, method 1") +
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme(legend.position = "bottom")+
+  theme_classic()
+
+ggplot(ball_AS, aes(x = age, y = prop_2))+
+  geom_point()+
+  geom_smooth(se = FALSE,method = 'loess')+
+  geom_point(data = ball_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the noun: Ball, method 2") +
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme(legend.position = "bottom")+
+  theme_classic()
+
+
+play_AS <- data_all_AS %>%
+  filter(definition == "play",
+         age <= 90)
+
+play_AS_clean <- left_join(count_a15, play_AS, by = "age")
+
+play_TD <- data_raw_TD %>%
+  filter(definition == "play")
+
+mod_2<- glm(prop ~ age, family = "binomial",
+               data = play_TD)
+
+fitted_points_play_TD <- mod_2 %>%
+  broom::augment()%>%
+  mutate(fitted_prob = 1/(1 + exp(-.fitted)))
+
+
+ggplot(play_AS, aes(x = age, y = prop_1))+
+  geom_point()+
+  geom_smooth(se = FALSE,method = 'loess')+
+  geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 1") +
+  scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme(legend.position = "bottom")+
+  theme_classic()
+
+ggplot(play_AS, aes(x = age, y = prop_2))+
+  geom_point()+
+  geom_smooth(se = FALSE,method = 'loess')+
+  geom_smooth(data = fitted_points_play_TD, aes(x =age, y = fitted_prob), col = "red")+
+  geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 2") +
+  theme(legend.position = "bottom")+
+  scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme_classic()
+
+
+```
+
+exploratory data analysis on AS children 
+
+```{r}
+count <- data_raw_AS %>%
+  group_by(age)%>%
+  summarise(N = n())
+
+ggplot(count, aes(x = age, y = N))+
+  geom_line()+
+  labs(y = "Number of Children on Record", title = "Number of Children with Autism on Record")
+
+count_a15 <- count %>% filter(N > 15) # count above 10 
+
+data_median_n <- left_join(count_a15, data_clean_AS, by = "age") %>%
+  filter(value_2 == TRUE)%>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition)) %>%
+  group_by(age) %>%
+  summarise(value = median(n))
+
+data_median_n %>%
+  filter(age <= 30, age >= 16)%>%
+  ggplot(aes(x = age, y = value))+
+  geom_point(col = "dodgerblue")+
+  geom_smooth()+
+  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison", caption = "Orange: TD, Blue: AS. Without data point that have less than 15 obersvations")+
+  geom_smooth(data = data_median_TD, aes(x = age, y = production), color = "darkorange")+
+  theme_classic()
+
+data_children_n <- left_join(count_a15, data_clean_AS, by = "age")%>%
+  filter(value_2 == TRUE) %>%
+  group_by(GUID,age)%>%
+  summarise(n = n_distinct(definition))
+
+ggplot(data_children_n,
+        aes(x  = age, y = n)) +
+  geom_jitter(width = .4, size = 1, alpha = .4) +
+  labs("Production (number of words)", title = "Production vs. Age in AS children",caption = "Without data point that have less than 15 obersvations") +
+  ylim(c(0, 680)) + 
+  theme(legend.position = "bottom")+
+  geom_quantile(quantiles = taus)
+
+ggplot(ball_AS_clean, aes(x = age, y = prop_2))+
+  geom_point()+
+  geom_smooth(method = 'loess')+
+    geom_smooth(data = fitted_points_ball_TD, aes(x =age, y = fitted_prob), col = "red")+
+  geom_point(data = ball_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the noun: Ball, method 2", caption = "Without data point that have less than 15 obersvations") +
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme(legend.position = "bottom")+
+  theme_classic()
+
+ggplot(play_AS_clean, aes(x = age, y = prop_2))+
+  geom_point()+
+  geom_smooth(method = 'loess')+
+  geom_smooth(data = fitted_points_play_TD, aes(x =age, y = fitted_prob), col = "red")+
+  geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 2", caption = "Without data point that have less than 15 obersvations") +
+  theme(legend.position = "bottom")+
+  scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
+  geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
+  theme_classic()
+```
+
+
+```{r}
+data_growth <- feather::read_feather("saved_data/data_growth.feather") 
+```
+
