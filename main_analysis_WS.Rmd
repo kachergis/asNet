@@ -1,5 +1,5 @@
 ---
-title: "Comparison of TD, AS"
+title: "WS"
 author: "_"
 output: html_document
 ---
@@ -16,6 +16,7 @@ library(ggthemes)
 library(feather)
 library(poweRlaw)
 library(wordbankr)
+library(rwebppl)
 
 #Load helper functions
 source(paste(getwd(),"/helper_functions/all_helper.r",sep = ""), chdir = T)
@@ -97,8 +98,8 @@ data_raw_TD <- bind_rows(data_raw_TD) %>%
               prop = mean(value, na.rm = TRUE)) 
 
 #feather::write_feather(data_raw_TD,"saved_data/data_raw_TD.feather")
-#data_raw_TD <- feather::read_feather("saved_data/data_raw_TD.feather")%>%
-  #filter(form == "WS")
+data_raw_TD <- feather::read_feather("saved_data/data_raw_TD.feather")%>%
+  filter(form == "WS")
 ```
 
 
@@ -558,7 +559,7 @@ sem_red <-  map(growth_by_meas_lang, sem_net_fun) %>%
 
 #Save 
 #feather::write_feather(sem_red, "saved_data/sem_red.feather")
-sem_red_2 <- feather::read_feather("saved_data/sem_red.feather") 
+sem_red <- feather::read_feather("saved_data/sem_red.feather") 
 
 #Phonological Networks
 ######################
@@ -598,12 +599,14 @@ phono_red <-  map(growth_by_meas_lang, phono_net_fun) %>%
 
 
 #feather::write_feather(phono_red, "saved_data/phono_red.feather")
-phono_red_2 <- feather::read_feather("saved_data/phono_red.feather") 
+phono_red <- feather::read_feather("saved_data/phono_red.feather") 
 
 #Combine data 
 data_growth_net <- words_growth %>%
   left_join(sem_red) %>%
   left_join(phono_red)
+
+#feather::write_feather(data_growth_net, "saved_data/data_growth_net.feather")
 ```
 
 ```{r,fig.width=10, fig.height=5}
@@ -646,7 +649,7 @@ data_static_pred  <- data_static %>%
   #select(-definition, -uni_lemma)
 
 #feather::write_feather(data_static_pred, "saved_data/data_static_pred.feather")
-data_static_pred_2 <- feather::read_feather("saved_data/data_static_pred.feather") 
+data_static_pred <- feather::read_feather("saved_data/data_static_pred.feather") 
 
 #Combine with full proportion-based data  (for the second regression which fit the entire production curve)
 data_static_pred$language <- plyr::mapvalues(data_static_pred$language, 
@@ -807,17 +810,115 @@ degree_dist <- feather::read_feather("saved_data/degree_dist.feather")
 degree_test <- feather::read_feather("saved_data/degree_test.feather")
 
 #plot cumulative distributions
-ggplot(data = degree_dist,  aes(x=x, y=y, col=dimension))+
-  facet_grid(measure ~ language)+#, scales = "free") +
-  geom_point(#aes(colour = lexical_class),
-    #colour = solarized_palette(1),
-    size = 0.5, alpha = 0.5) +
+ggplot(data = degree_dist, aes(x=x, y=y, col=dimension))+
+  facet_grid(measure ~ language)+
+  geom_point() +
   scale_y_log10() + scale_x_log10() +
+  labs(x = "degree", y = "probability")+
   theme(aspect.ratio = 1)
-  #scale_x_continuous(limits=c(-2,5))+
-  #geom_smooth(method = "lm", colour = "grey3", se=FALSE)+
-  #scale_colour_solarized(name = "") 
 
 ```
 
+## Growth mechanisms
+
+PreProcessing growth data strcutire for network growth models 
+
+```{r}
+data_growth_net <- feather::read_feather("saved_data/data_growth_net.feather")
+
+data_growth_pred_WS <- data_growth_net %>%
+  filter(!is.na(PAC_assoc)) %>% # keep unilemma which intersect with free association data
+  filter(!is.na(PAC_phono_t2)) # In case a word is not transcribed phonologically (there should not be any)
+
+data_growth_pred_WG <- feather::read_feather("saved_data/data_growth_pred_WG.feather")
+
+data_growth_pred <- bind_rows(data_growth_pred_WS, data_growth_pred_WG)
+  
+data_growth_pred$PAT_assoc[is.na(data_growth_pred$PAT_assoc)] <- 0
+data_growth_pred$PAT_phono_t2[is.na(data_growth_pred$PAT_phono_t2)] <- 0
+
+#Scale predictors
+data_growth_pred$language <- plyr::mapvalues(data_growth_pred$language, 
+                                 from = "English (American)", 
+                                 to = "English")
+
+data_growth_pred <- data_growth_pred %>%
+  mutate_at(c('PAC_assoc', 'PAT_assoc', 'PAC_phono_t2', 'PAT_phono_t2'), funs(as.numeric(scale(.)))) %>%
+  select(-definition) #removing defintions because they cause JSon parser to fail in rWebppl (especially the (') in French)
+
+```
+
+Train the probabilistic models
+
+```{r}
+#Load probabilsitic models
+source(paste(getwd(),"/models/all_models.r",sep = ""), chdir = T)
+#Isolateed predictors
+model_semPAT <-  paste(helper, sem_PAT, optimize, sep = '\n')
+model_semPAC <-  paste(helper, sem_PAC, optimize, sep = '\n')
+model_phonoPAT <-  paste(helper, phono_PAT, optimize, sep = '\n')
+model_phonoPAC <-  paste(helper, phono_PAC, optimize, sep = '\n')
+#Combined predictors
+model_semPAC_phonoPAC_semPAT_phonoPAT <-  paste(helper, semPAC_phonoPAC_semPAT_phonoPAT, optimize, sep = '\n')
+#Make a list of theses models
+model_list = list(model_semPAT, model_semPAC, model_phonoPAT, model_phonoPAC,
+                  model_semPAC_phonoPAC_semPAT_phonoPAT
+                  )
+model_name=c('semPAT', 'semPAC', 'phonoPAT', 'phonoPAC',
+                                        'model_semPAC_phonoPAC_semPAT_phonoPAT')
+
+```
+
+```{r}
+#Function that computes the posterior
+
+posterior_fun <- function(data_growth_meas_lang) {
+  
+  lang <- unique(data_growth_meas_lang$language)
+  meas <- unique(data_growth_meas_lang$measure)
+  
+  posteriors_lang <- vector("list", length = length(model_list))
+  
+   {
+    
+    posterior_model <- NULL
+    print(model_name[[i]]) 
+    print(meas)
+    print(lang)
+    
+    while (typeof(posterior_model)=="NULL") {
+      posterior_model <- webppl(model_list[[i]],
+                                data = data_growth_meas_lang,
+                                data_var = "data",
+                                inference_opts = list(
+                                  method = "MCMC",
+                                  samples = 1000, 
+                                  burn = 500),
+                                model_var = "AOA",
+                                output_format = "webppl")
+    }
+    
+    
+    
+    posteriors_lang[[i]] <- posterior_model %>%
+      mutate(measure = meas,
+             language = lang,
+             model_name = model_name[i])
+  }
+  
+  return(bind_rows(posteriors_lang))
+  
+} 
+
+#Split by measure and language
+
+data_growth_by_meas_lang <- data_growth_pred %>%
+  split(paste(.$measure, .$language))
+posterior <- map(data_growth_by_meas_lang, posterior_fun) %>%
+  bind_rows()
+
+feather::write_feather(posterior, "saved_data/posterior.feather")
+posterior <- feather::read_feather("saved_data/posterior.feather") 
+    
+```
 
