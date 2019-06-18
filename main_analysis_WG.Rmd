@@ -1,12 +1,9 @@
 ---
-title: "WS"
+title: "WG"
 author: "_"
 output: html_document
 ---
-
-# how many we lose when combining with left bind TD data ( how many percent, what are the words (exmaples)) 
-
-
+# run from the beginning 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
@@ -20,6 +17,7 @@ library(feather)
 library(poweRlaw)
 library(wordbankr)
 library(rwebppl)
+library(lme4)
 
 #Load helper functions
 source(paste(getwd(),"/helper_functions/all_helper.r",sep = ""), chdir = T)
@@ -32,48 +30,55 @@ source(paste(getwd(),"/models/all_models.r",sep = ""), chdir = T)
 ```
 
 
-Load data_AS_WS
+Load data_AS_WG
 ```{r}
-data_AS_WS <- read.delim("mci_sentences02.txt", header = TRUE, sep = "\t", dec = ".")
+data_AS_WG <- read.delim("mci_words_gestures01.txt", header = TRUE, sep = "\t", dec = ".")
 
 # extracting first row as a descriptive dataframe
-description_WS <- data_AS_WS[1:1,]
-description_WS <- as.data.frame(t(description_WS))
-names(description_WS) <- "description"
+description_WG <- data_AS_WG[1:1,]
+description_WG <- as.data.frame(t(description_WG))
+names(description_WG) <- "description"
+
+# we only kept vocab 
+eliminated_WG <- data_AS_WG%>%
+  select(c(23:58,454:520))
+
+#using mci_words_gestures01_id	as a disctincetive id and The NDAR Global Unique Identifier 
+
+data_raw_AS_WG <- data_AS_WG %>%
+  select(c("mci_words_gestures01_id","subjectkey","interview_age", 59:453))
+
+colnames(data_raw_AS_WG) <- as.character(unlist(data_raw_AS_WG[1,])) #unlist the row
+data_raw_AS_WG = data_raw_AS_WG[-1, ]
+
+# what are the duplicated
+AS_WG_duplicated <- data_raw_AS_WG[duplicated(colnames(data_raw_AS_WG))] # can call colnames 
+
+# making column names unique
+names(data_raw_AS_WG) <- make.unique(names(data_raw_AS_WG), sep="_")
 
 
-
-# what we get rid of:
-eliminated_WS <- data_AS_WS%>%
-  select(c(701:709,780:850))
-
-#using mci_sentences02_id	as a disctincetive id and The NDAR Global Unique Identifier 
-data_raw_AS_WS <- data_AS_WS %>%
-  select(c("mci_sentences02_id","subjectkey","interview_age", 21:779)) %>% # starting from 785 is complexity. we kept vocabs, word endings, word forms.
-  select(-(684:692))
-
-colnames(data_raw_AS_WS) <- as.character(unlist(data_raw_AS_WS[1,])) #unlist the row
-data_raw_AS_WS = data_raw_AS_WS[-1, ]
-
-data_raw_AS_WS<- data_raw_AS_WS %>%
-  rename(id = "mci_sentences02_id",
+data_raw_AS_WG<- data_raw_AS_WG %>%
+  rename(id = "mci_words_gestures01_id",
          GUID = "The NDAR Global Unique Identifier (GUID) for research subject", 
-         age = "Age in months at the time of the interview/test/sampling/imaging.")%>%
+         age = "Age in months at the time of the interview/test/sampling/imaging.",
+         house = "MacArthur Words and Gestures: Vocabulary Checklist: House")%>%
   mutate(age = as.numeric(as.character(age)))
 
-data_clean_AS_WS <- data_raw_AS_WS %>%
+
+data_clean_AS_WG <- data_raw_AS_WG %>%
   gather(key = "definition", value = "value", -c(id,GUID,age))%>%
-  separate(definition, c("category","definition"),sep = "\\. ") %>%
+  #separate(definition, c("category","definition"),sep = "\\. ") %>%
   mutate_all(na_if,"",)%>% #if blank then fill in NA
    mutate(value = ifelse(value == 0, FALSE, TRUE))
 
-data_all_AS_WS <- data_clean_AS_WS %>%
-     group_by(category, definition, age) %>%
+data_all_AS_WG <- data_clean_AS_WG %>%
+     group_by(definition, age) %>%
        summarise(num_true = sum(value, na.rm = TRUE),
                  num_false = n() - num_true,
-                 prop = num_true/n())
+                 prop= num_true/n())
 
-summary(data_all_AS_WS)
+summary(data_all_AS_WG)
 ```
 
 Compute Age of Acqusition (AoA) of definitions
@@ -90,7 +95,7 @@ fit_inst_measure_uni <- function(inst_measure_uni_data) {
   aoa <- -model$coefficients[["(Intercept)"]] / model$coefficients[["age"]]
   constants <- inst_measure_uni_data %>%
     ungroup()%>%
-    select(category, definition) %>%
+    select(definition) %>%
     distinct()
   
   props <- inst_measure_uni_data %>%
@@ -101,37 +106,63 @@ fit_inst_measure_uni <- function(inst_measure_uni_data) {
              fit_prop = inv.logit(fit$fit),
              fit_se = fit$se.fit,
              aoa_AS = aoa, 
-             category = constants$category,
              definition = constants$definition) %>%
     left_join(props)
 }
 
-list_by_item <- data_all_AS_WS %>% 
+
+list_by_item <- data_all_AS_WG %>% 
   rename(num_true = num_true,
          num_false = num_false,
          prop = prop)%>%
-  split(paste(.$category,.$definition)) # need comfirmation 
+  split(paste(.$definition)) # need comfirmation 
 
-data_aoa_AS_WS <- map(list_by_item, fit_inst_measure_uni) %>% 
-  bind_rows()%>%
-  select(category,definition,aoa_AS) %>%
-  distinct()  # negative values in aoa, same in main_analysis.rmd
+data_aoa_AS_WG <- map(list_by_item, fit_inst_measure_uni) %>% 
+  bind_rows() %>%
+  select(definition,aoa_AS) %>%
+  distinct()
 
-#feather::write_feather(data_aoa_AS_WS,"saved_data/data_aoa_AS_WS.feather")
-data_aoa_AS_WS <- feather::read_feather("saved_data/data_aoa_AS_WS.feather") 
+list_of_values <- c("chicken","fish_1","water_1","drink","swing_1","watch","clean_1","backyard_1")
+
+data_aoa_AS_WG<- data_aoa_AS_WG %>%
+  filter(!definition %in% list_of_values) # get rid of thoes rows
+
+# dropping lower aoa 
+
+#chicken	78.88241
+#chicken_1	77.25093
+
+#	fish	67.75401
+#	fish_1	92.03162
+
+# water	65.32196
+#	water_1	68.53121
+
+#	drink	65.18341
+#	drink_1	62.98884
+
+#	swing	65.53841
+#	swing_1	68.41339
+
+#	watch	114.3912
+#	watch_1	104.8288
+
+#	clean	83.78244
+#	clean_1	86.33049
+
+#	backyard	98.45454
+#	backyard_1	131.03545
+
+#feather::write_feather(data_aoa_AS_WG, "saved_data/data_aoa_AS_WG.feather")
+data_aoa_AS_WG <- feather::read_feather("saved_data/data_aoa_AS_WG.feather") 
 ```
 
-Load aoa dataframe from TD
+
 ```{r}
-# put in code in another markdone that could be traced 
 data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
-  filter(measure == "produces")
+  filter(measure == "understands")
 
-# decided using uni_lemma, uni_lemma does not have *, however, sometimes it has ()that gave further definition which could be interesting for matching 
-
-#which(!data_aoa_TD$uni_lemma == data_aoa_TD$definition)
-
-all_aoa_WS <- inner_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "definition"))%>%
+all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "definition"))%>%
   rename(aoa_TD = aoa,
          aoa_AS = aoa_AS)%>%
   filter(aoa_TD > 0)%>% # note that i've applied filter here 
@@ -139,9 +170,9 @@ all_aoa_WS <- inner_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "defin
          diff = aoa_AS - aoa_TD,
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
-  
-most_diff_aoa <-  all_aoa_WS %>% head(10)
-least_diff_aoa <- tail(all_aoa_WS, 10)
+
+most_diff_aoa <-  all_aoa_WG %>% head(10)
+least_diff_aoa <- tail(all_aoa_WG, 10)
 
 diff_aoa <- bind_rows(least_diff_aoa,most_diff_aoa)
 ```
@@ -155,39 +186,40 @@ Difference in AoAs
 ggplot(diff_aoa, aes(x = lexical_class, y = diff_perc))+
   geom_point(alpha = 0.8)+
   labs(y = "Percentage Change in AoA", x = "Lexical Class", title = "Top & Bottom 10 in Percentage difference in AoA")+
-  theme_bw()
+  theme_bw() # the word daddy has a huge percent change in the current method of computing AoA
   
 
-ggplot(all_aoa_WS, aes(aoa_TD))+
+ggplot(all_aoa_WG, aes(aoa_TD))+
   stat_density(geom="line")+
   geom_density(aes(aoa_AS),color = "red")+
   theme_classic()+
   labs(x = "AoA", title = "Density plot of Age of Acqusition", caption = "Black: TD, Red = AS_method")#+
-  #facet_wrap(vars(lexical_class)) # other has the smallest difference.
+  #facet_wrap(vars(lexical_class)) # Much bigger gap compared with WS
 
 ```
 
-Median Word Produced comparison 
+Median Produced comparison 
 
 ```{r}
-data_median_TD_WS <- feather::read_feather("saved_data/data_median_TD.feather") %>%
-  filter(form == "WS")
+data_median_TD_WG <- feather::read_feather("saved_data/data_median_TD.feather") %>%
+  filter(form == "WG")
 
-data_median_AS <- data_clean_AS_WS %>%
+data_median_WG <- data_clean_AS_WG %>%
   filter(value == TRUE)%>%
   group_by(GUID,age)%>%
   summarise(n = n_distinct(definition)) %>%
   group_by(age) %>%
   summarise(value = median(n))%>%
-  filter(age <= 30, age >= 16)%>% # matching with previous graphs 
+  filter(age <= 50)%>% # for zoom in the difference
   ggplot(aes(x = age, y = value))+
   #geom_point(col = "dodgerblue")+
   geom_smooth()+
-  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison", caption = "Orange: TD, Blue: AS")+
-  geom_smooth(data = data_median_TD_WS, aes(x = age, y = production), color = "darkorange")+
+  labs(y = "Median Gesture Understanding & Production", x = "Age(Month)",title = "Median Gesture Understanding & Production Comparison", caption = "Orange: TD, Blue: AS")+
+  geom_smooth(data = data_median_TD_WG, aes(x = age, y = production), color = "darkorange")+
   theme_classic()
 
-data_median_AS
+data_median_WG
+
 ```
 
 Percentile graph 
@@ -195,25 +227,26 @@ Percentile graph
 ```{r}
 taus <-  c(0.1, 0.25, 0.5, 0.75, 0.9)
 
-data_children <- data_clean_AS_WS %>%
-  filter(value == TRUE, age <= 50) %>% # data looks too sparse after age 50
+data_children <- data_clean_AS_WG %>%
+  filter(value == TRUE, age <= 40) %>% # data looks too sparse after age 40
   group_by(GUID,age)%>%
   summarise(n = n_distinct(definition))%>%
   ggplot(aes(x  = age, y = n)) +
   geom_jitter(width = .4, size = 1, alpha = .6) +
-  labs("Production (number of words)", title = "Production vs. Age in AS children") +
-  ylim(c(0, 680)) + 
+  labs("Production (number of words)", title = "Gesture Understanding & Production vs. Age in AS children") +
+  ylim(c(0, 400)) + 
   theme(legend.position = "bottom")+
   geom_quantile(quantiles = taus)
 
 data_children
+
 ```
 
 
 Data exploration on age groups of children with AS. Try to exclude age groups that have too few of data points 
 
 ```{r}
-count <- data_raw_AS_WS %>%
+count <- data_raw_AS_WG %>%
   group_by(age)%>%
   summarise(N = n())
 
@@ -221,14 +254,14 @@ ggplot(count, aes(x = age, y = N))+
   geom_line()+
   labs(y = "Number of Children on Record", title = "Number of Children with Autism on Record")
 
+count_a15 <- count %>% filter(N > 15) ## count above 15, 15 is simply a random number picked, could be futher adjusted. The range is 8 to 62
 
-count_a15 <- count %>% filter(N > 15) # count above 15, 15 is simply a random number picked, could be futher adjusted. The range is 9-45.
 ```
 
-Replotting visualizations while excluding age categories that have fewer than 15 children in the group 
+Replotting visualizations while excluding age categories that have fewer than 15 children in the group
 
 ```{r}
-data_median_n <- left_join(count_a15, data_clean_AS_WS, by = "age") %>%
+data_median_n <- left_join(count_a15, data_clean_AS_WG, by = "age") %>%
   filter(value == TRUE)%>%
   group_by(GUID,age)%>%
   summarise(n = n_distinct(definition)) %>%
@@ -236,15 +269,16 @@ data_median_n <- left_join(count_a15, data_clean_AS_WS, by = "age") %>%
   summarise(value = median(n))
 
 data_median_n %>%
-  filter(age <= 30, age >= 16)%>%
+  filter(age <= 62, age >= 8)%>%
   ggplot(aes(x = age, y = value))+
-  geom_point(col = "dodgerblue")+
+  #geom_point(col = "dodgerblue")+
   geom_smooth()+
-  labs(y = "Median Word Production", x = "Age(Month)",title = "Median Word Production Comparison", caption = "Orange: TD, Blue: AS. Without data point that have less than 15 obersvations")+
-  geom_smooth(data = data_median_TD_WS, aes(x = age, y = production), color = "darkorange")+
+  labs(y = "Median Gesture Understanding & Production", x = "Age(Month)",title = "Median Gesture Understanding & Production Comparison", caption = "Orange: TD, Blue: AS. Without data point that have less than 15 obersvations")+
+  geom_smooth(data = data_median_TD_WG, aes(x = age, y = production), color = "darkorange")+
   theme_classic()
 
-data_children_n <- left_join(count_a15, data_clean_AS_WS, by = "age")%>%
+
+data_children_n <- left_join(count_a15, data_clean_AS_WG, by = "age")%>%
   filter(value == TRUE) %>%
   group_by(GUID,age)%>%
   summarise(n = n_distinct(definition))
@@ -253,25 +287,28 @@ ggplot(data_children_n,
         aes(x  = age, y = n)) +
   geom_jitter(width = .4, size = 1, alpha = .4) +
   labs("Production (number of words)", title = "Production vs. Age in AS children",caption = "Without data point that have less than 15 obersvations") +
-  ylim(c(0, 680)) + 
+  ylim(c(0, 400)) + 
   theme(legend.position = "bottom")+
   geom_quantile(quantiles = taus)
+
+# we don't see anything during month 50, there fore the range is limited to 8 to 49
+
 ```
 
 Two word comparison. The visualizations that excluded data points having less than 15 observations show clearer trend
 
 ```{r}
-data_all_TD_WS <- feather::read_feather("saved_data/data_all_TD.feather") %>%
-  filter(form == "WS")
+data_all_TD_WG <- feather::read_feather("saved_data/data_all_TD.feather") %>%
+  filter(form == "WG")
 
-ball_AS <- data_all_AS_WS%>%
-  filter(definition == "ball", age <= 45)
+ball_AS <- data_all_AS_WG%>%
+  filter(definition == "ball", age <= 49)
 
 ball_AS_clean <- left_join(count_a15, ball_AS, by = "age")
 
-ball_TD <-data_all_TD_WS %>%
+ball_TD <- data_all_TD_WG %>%
   filter(definition == "ball",
-         form == "WS")
+         form == "WG")
 
 mod_1<- glm(prop ~ age, family = "binomial",
                data = ball_TD)
@@ -284,21 +321,21 @@ ggplot(ball_AS, aes(x = age, y = prop))+
   geom_point()+
   geom_smooth(se = FALSE,method = 'loess')+
   geom_point(data = ball_TD, aes(x =  age, y = prop), col = "red")+
-  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the noun: Ball") +
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could under stand & produce the gesture: Ball") +
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme(legend.position = "bottom")+
   theme_classic()
 
 
-play_AS <- data_all_AS_WS %>%
+play_AS <- data_all_AS_WG %>%
   filter(definition == "play",
-         age <= 90)
+         age <= 49)
 
 play_AS_clean <- left_join(count_a15, play_AS, by = "age")
 
-play_TD <- data_all_TD_WS %>%
+play_TD <- data_all_TD_WG %>%
   filter(definition == "play")%>%
-  filter(form == "WS")
+  filter(form == "WG")
 
 mod_2<- glm(prop ~ age, family = "binomial",
                data = play_TD)
@@ -312,9 +349,9 @@ ggplot(play_AS, aes(x = age, y = prop))+
   geom_smooth(se = FALSE,method = 'loess')+
   geom_smooth(data = fitted_points_play_TD, aes(x =age, y = fitted_prob), col = "red")+
   geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
-  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 2") +
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could understand & produce the gesture: play") +
   theme(legend.position = "bottom")+
-  scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
+  scale_x_continuous(breaks =c(0,10,20,30,40,50))+
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme_classic()
 
@@ -323,7 +360,7 @@ ggplot(ball_AS_clean, aes(x = age, y = prop))+
   geom_smooth(method = 'loess')+
     geom_smooth(data = fitted_points_ball_TD, aes(x =age, y = fitted_prob), col = "red")+
   geom_point(data = ball_TD, aes(x =  age, y = prop), col = "red")+
-  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the noun: Ball, method 2", caption = "Without data point that have less than 15 obersvations") +
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could understand & produce the guesture of: Ball", caption = "Without data point that have less than 15 obersvations") +
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme(legend.position = "bottom")+
   theme_classic()
@@ -333,9 +370,9 @@ ggplot(play_AS_clean, aes(x = age, y = prop))+
   geom_smooth(methosd = 'loess')+
   geom_smooth(data = fitted_points_play_TD, aes(x =age, y = fitted_prob), col = "red")+
   geom_point(data = play_TD, aes(x =  age, y = prop), col = "red")+
-  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could produce the verb: play, method 2", caption = "Without data point that have less than 15 obersvations") +
+  labs(y = "Prop", x = "Age (Month)", title = "Proportion of Children who could understand & produce the guesture of: play", caption = "Without data point that have less than 15 obersvations") +
   theme(legend.position = "bottom")+
-  scale_x_continuous(breaks =c(0,10,20,30,40,50,60,70,80))+
+  scale_x_continuous(breaks =c(0,10,20,30,40,50))+
   geom_hline(yintercept=.5, linetype="dashed", color = "blue")+
   theme_classic()
 
@@ -375,26 +412,25 @@ make_data_growth <- function(word_aoa) {
   return(df)
 }
 
-aoa_by_measure_lang <- all_aoa_WS %>%
+aoa_by_measure_lang <- all_aoa_WG %>%
   mutate(age = round(aoa_AS)) %>%
   select(-form, -aoa_AS) %>%
   filter(lexical_class == "nouns")%>%
   split(paste(.$language, .$measure))
   
   
-data_growth_AS_WS <- map(aoa_by_measure_lang, make_data_growth) %>%
-  bind_rows()%>%
-  filter(age <= 45)# start with 24 since AoA for Children with AS start with 24.# used common_word dataset.Limit to age < 45 (more than 15 observations)
+data_growth_AS_WG <- map(aoa_by_measure_lang, make_data_growth) %>%
+  bind_rows() # age range from 56 month to 248 month?
 
-#feather::write_feather(data_growth_AS_WS,"saved_data/data_growth_AS_WS.feather")
+#feather::write_feather(data_growth_AS_WG,"saved_data/data_growth_AS_WG.feather")
 
-data_growth_AS_WS <- feather::read_feather("saved_data/data_growth_AS_WS.feather") 
+data_growth_AS_WG <- feather::read_feather("saved_data/data_growth_AS_WG.feather") 
 ```
 
 
 Construct the netwroks and derive the dynamic predictors: PAC and PAT
 ```{r}
-words_growth <- data_growth_AS_WS
+words_growth <- data_growth_AS_WG
 
 growth_by_meas <- words_growth %>%
   split(paste(.$measure))
@@ -433,9 +469,8 @@ assoc_PAC<- PAC_generator(vocab_age = growth_meas_lang, word_pairs = assoc_pairs
 sem_red <-  map(growth_by_meas_lang, sem_net_fun) %>%
   bind_rows()
 
-
-#feather::write_feather(sem_red, "saved_data/sem_red_AS_WS.feather")
-sem_red <- feather::read_feather("saved_data/sem_red_AS_WS.feather") 
+#feather::write_feather(sem_red, "saved_data/sem_red_AS_WG.feather")
+sem_red <- feather::read_feather("saved_data/sem_red_AS_WG.feather") 
 
 #Phonological Networks
 ######################
@@ -474,18 +509,16 @@ phono_red <-  map(growth_by_meas_lang, phono_net_fun) %>%
   bind_rows() 
 
 
-#feather::write_feather(phono_red, "saved_data/phono_red_AS_WS.feather")
-phono_red <- feather::read_feather("saved_data/phono_red_AS_WS.feather") 
+#feather::write_feather(phono_red, "saved_data/phono_red_AS_WG.feather")
+phono_red <- feather::read_feather("saved_data/phono_red_AS_WG.feather") 
 
 #Combine data 
 data_growth_net <- words_growth %>%
   left_join(sem_red) %>%
   left_join(phono_red)
 
-#feather::write_feather(data_growth_net, "saved_data/data_growth_net_AS_WS.feather")
-data_growth_net <- feather::read_feather("saved_data/data_growth_net_AS_WS.feather") 
+#feather::write_feather(data_growth_net, "saved_data/data_growth_net_AS_WG.feather")
 ```
-
 
 ```{r,fig.width=10, fig.height=5}
 #Compute other static predictors (frequency and length) besides PAC
@@ -516,28 +549,21 @@ words_freq <- data_static %>%
   left_join(frequency_mika) %>%
   select(-definition, -uni_lemma, -sem_deg, -phono_deg)
 
-aoa_items <- all_aoa_WS %>%
+aoa_items <- all_aoa_WG %>%
   select(language, measure, item, aoa_AS) # Here I should round the AoA?
   
 #Combine predictors
-data_static_pred_AS_WS  <- data_static %>%
+data_static_pred_AS_WG  <- data_static %>%
   left_join(words_len) %>%
   left_join(words_freq) %>%
   left_join(aoa_items) #%>%
   #select(-definition, -uni_lemma)
 
-#feather::write_feather(data_static_pred_AS_WS, "saved_data/data_static_pred_AS_WS.feather")
+#feather::write_feather(data_static_pred_AS_WG, "saved_data/data_static_pred_AS_WG.feather")
+data_static_pred_AS_WG <- feather::read_feather("saved_data/data_static_pred_AS_WG.feather") 
 
-data_static_pred_AS_WS <- feather::read_feather("saved_data/data_static_pred_AS_WS.feather") 
-
-
-# WG need check
-data_static_pred_WG <- feather::read_feather("saved_data/data_static_pred_WG.feather") 
-
-data_static_pred_AS_ALL <- bind_rows(data_static_pred_AS_WS,data_static_pred_WG)
 #Combine with full proportion-based data  (for the second regression which fit the entire production curve)
-
-data_static_pred_AS_ALL$language <- plyr::mapvalues(data_static_pred_AS_ALL$language, 
+data_static_pred_AS_WG$language <- plyr::mapvalues(data_static_pred_AS_WG$language, 
                                  from = "English (American)", 
                                  to = "English")
 
@@ -547,14 +573,14 @@ data_static_pred_AS_ALL$language <- plyr::mapvalues(data_static_pred_AS_ALL$lang
 #                                 to = "English")
 
 #data_static_prop <- data_all %>%
-#  left_join(data_static_pred_AS_WS) 
+#  left_join(data_static_pred_AS_WG) 
 
 ```
 
 ```{r}
 Production
 
-unilemmas <- data_static_pred_AS_WS %>%
+unilemmas <- data_static_pred_AS_WG %>%
   select(-IPA) %>%
   rename(aoa = aoa_AS)%>%
   filter(!is.na(uni_lemma)) %>% 
@@ -566,10 +592,9 @@ uni_scale <- unilemmas %>%
   mutate_at(c('sem_deg', 'phono_deg', 'length', 'frequency'), funs(as.numeric(Hmisc::impute(.)))) %>%
   mutate_at(c('sem_deg', 'phono_deg', 'length', 'frequency'), funs(as.numeric(scale(.))))
 
-#feather::write_feather(uni_scale, "saved_data/uni_scale_AS_WS.feather")
-uni_scale <- feather::read_feather("saved_data/uni_scale_AS_WS.feather")
+#feather::write_feather(uni_scale, "saved_data/uni_scale_AS_WG.feather")
+uni_scale <- feather::read_feather("saved_data/uni_scale_AS_WG.feather")
 
-data_long <- uni_scale %>%
   gather(predictor, value, sem_deg:frequency) %>%
   filter(predictor == "sem_deg" | predictor == "phono_deg") 
 
@@ -583,18 +608,19 @@ plot_correlation_prod <- ggplot(data_long, aes(x=value, y=aoa))+
   geom_abline(slope = -1)+
   coord_cartesian(xlim=c(-1,5))+
   #scale_x_continuous(limits=c(-2,5))+
-  scale_y_continuous(breaks =c(15,25,35,45,55))+
+  scale_y_continuous(breaks =c(55,85,115,145))+
   geom_smooth(method = "lm", colour = "grey1", se=FALSE)+
   #scale_colour_solarized(name = "") +
   theme_few()+
   theme(aspect.ratio = 0.7, 
         plot.margin=grid::unit(c(0,0,0,0), "mm")
         )+
-  geom_text(data=subset(correlations), aes(label=paste("r=", cor, sep="")), x=3.5, y=50, size=4, fontface = "bold")+
+  geom_text(data=subset(correlations), aes(label=paste("r=", cor, sep="")), x=3.5, y=100, size=4, fontface = "bold")+
   xlab("degree z-score") +ylab("AoA")
   
 plot_correlation_prod
 ```
+
 
 ### Degree distribution
 Import the analysese from cogsci paper
@@ -687,12 +713,12 @@ degree_dist  <- map2(data_by_meas_lang, 'distribution', powerLaw_fun) %>%
 degree_test  <- map2(data_by_meas_lang, 'test' , powerLaw_fun) %>%
   bind_rows()
 
-#feather::write_feather(degree_dist, "saved_data/degree_dist_AS_WS.feather")
-#degree_dist <- feather::read_feather("saved_data/degree_dist_AS_WS.feather")
+#feather::write_feather(degree_dist, "saved_data/degree_dist_AS_WG.feather")
+degree_dist <- feather::read_feather("saved_data/degree_dist_AS_WG.feather")
 
 
-#feather::write_feather(degree_test, "saved_data/degree_test_AS_WS.feather")
-#degree_test <- feather::read_feather("saved_data/degree_test_AS_WS.feather")
+#feather::write_feather(degree_test, "saved_data/degree_test_AS_WG.feather")
+degree_test <- feather::read_feather("saved_data/degree_test_AS_WG.feather")
 
 #plot cumulative distributions
 ggplot(data = degree_dist, aes(x=x, y=y, col=dimension))+
@@ -704,114 +730,9 @@ ggplot(data = degree_dist, aes(x=x, y=y, col=dimension))+
 
 ```
 
-#where I left
-## Growth mechanisms
+ 
+## Growth mechanisms, see WS.rmd.
 
-PreProcessing growth data strcutire for network growth models 
-
-```{r}
-data_growth_pred_WS <- data_growth_net %>%
-  filter(!is.na(PAC_assoc)) %>% # keep unilemma which intersect with free association data
-  filter(!is.na(PAC_phono_t2)) # In case a word is not transcribed phonologically (there should not be any)
-
-data_growth_pred_WG <- feather::read_feather("saved_data/data_growth_net_AS_WG.feather") # from main_WG.Rmd
-
-data_growth_pred <- bind_rows(data_growth_pred_WS, data_growth_pred_WG)
-  
-data_growth_pred$PAT_assoc[is.na(data_growth_pred$PAT_assoc)] <- 0
-data_growth_pred$PAT_phono_t2[is.na(data_growth_pred$PAT_phono_t2)] <- 0
-
-#Scale predictors
-data_growth_pred$language <- plyr::mapvalues(data_growth_pred$language, 
-                                 from = "English (American)", 
-                                 to = "English")
-
-data_growth_pred <- data_growth_pred %>%
-  mutate_at(c('PAC_assoc', 'PAT_assoc', 'PAC_phono_t2', 'PAT_phono_t2'), funs(as.numeric(scale(.)))) %>%
-  select(-definition) #removing defintions because they cause JSon parser to fail in rWebppl (especially the (') in French)
-
-```
-
-Train the probabilistic models
-
-```{r}
-#Load probabilsitic models
-source(paste(getwd(),"/models/all_models.r",sep = ""), chdir = T)
-#Isolateed predictors
-model_semPAT <-  paste(helper, sem_PAT, optimize, sep = '\n')
-model_semPAC <-  paste(helper, sem_PAC, optimize, sep = '\n')
-model_phonoPAT <-  paste(helper, phono_PAT, optimize, sep = '\n')
-model_phonoPAC <-  paste(helper, phono_PAC, optimize, sep = '\n')
-#Combined predictors
-model_semPAC_phonoPAC_semPAT_phonoPAT <-  paste(helper, semPAC_phonoPAC_semPAT_phonoPAT, optimize, sep = '\n')
-#Make a list of theses models
-model_list = list(model_semPAT, model_semPAC, model_phonoPAT, model_phonoPAC,
-                  model_semPAC_phonoPAC_semPAT_phonoPAT
-                  )
-model_name=c('semPAT', 'semPAC', 'phonoPAT', 'phonoPAC',
-                                        'model_semPAC_phonoPAC_semPAT_phonoPAT')
-
-```
-
-```{r}
-#Function that computes the posterior
-
-posterior_fun <- function(data_growth_meas_lang) {
-  
-  lang <- unique(data_growth_meas_lang$language)
-  meas <- unique(data_growth_meas_lang$measure)
-  
-  posteriors_lang <- vector("list", length = length(model_list))
-  
-   {
-    
-    posterior_model <- NULL
-    #print(model_name[[i]]) 
-    #print(meas)
-    #print(lang)
-    
-    while (typeof(posterior_model)=="NULL") {
-      posterior_model <- webppl(model_list[[i]],
-                                data = data_growth_meas_lang,
-                                data_var = "data",
-                                inference_opts = list(
-                                  method = "MCMC",
-                                  samples = 1000, 
-                                  burn = 500),
-                                model_var = "AOA")#,
-                                #output_format = "webppl")
-    }
-    
-    
-    
-    posteriors_lang[[i]] <- posterior_model %>%
-      mutate(measure = meas,
-             language = lang,
-             model_name = model_name[i])
-  }
-  
-  return(bind_rows(posteriors_lang))
-  
-} 
-
-#Split by measure and language
-
-data_growth_by_meas_lang <- data_growth_pred %>%
-  split(paste(.$measure, .$language))
-
-posterior <- map(data_growth_by_meas_lang, posterior_fun) %>%
-  bind_rows()
-
-feather::write_feather(posterior, "saved_data/posterior.feather")
-posterior <- feather::read_feather("saved_data/posterior.feather") 
-    
-```
-
-### waiting for output 
-### Rest is checked 
-
-
-## Compare PAC to other predictors of AoA
 
 ```{r}
 
@@ -856,18 +777,20 @@ coefs_form <- reg %>%
 
 }
 
-feather::write_feather(coefs_all, "saved_data/static_preds_AS_WS.feather")
-#coefs_all <- feather::read_feather("saved_data/static_preds_AS_WS.feather")
+feather::write_feather(coefs_all, "saved_data/static_preds_AS_WG.feather")
+#coefs_all <- feather::read_feather("saved_data/static_preds_AS_WG.feather")
 
 ```
 
-Plot for production
+Plot for comprehension
+
 ```{r}
-plot_reg_prod <- ggplot(subset(coefs_all, measure =="produces"), aes(x = predictor, y = estimate)) +
-  geom_pointrange(aes(ymin = X2.5.., ymax = X97.5.., y = estimate, col = predictor, linetype=Test), 
+plot_reg_comp <- ggplot(subset(coefs_all, measure =="understands"), aes(x = predictor, y = estimate)) +
+  geom_pointrange(aes(ymin = X2.5.., ymax = X97.5.., y = estimate, col = predictor, linetype=Test),
                   position = position_dodge(width = .5),
                   size = 0.5,
                   fatten = 0.5)+
+                  
   geom_hline(yintercept = 0, color = "grey", linetype = "dashed")+
   #facet_wrap(~language, ncol=4)  +
   coord_flip() +
@@ -876,5 +799,5 @@ plot_reg_prod <- ggplot(subset(coefs_all, measure =="produces"), aes(x = predict
   theme_few()+
   theme(aspect.ratio = 0.7)
  
-plot_reg_prod
+plot_reg_comp
 ```
