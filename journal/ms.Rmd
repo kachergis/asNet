@@ -1,0 +1,146 @@
+---
+title             : 
+shorttitle        : 
+author: 
+  - name          : "Abdellah Fourtassi"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+    address       : "Postal address"
+    email         : "afourtas@stanford.edu"
+    
+
+affiliation:
+  - id            : "1"
+    institution   : "Department of Psychology, Stanford University"
+    
+
+author_note: |
+
+  Abdellah Fourtassi
+  
+  Department of Psychology
+  
+  Stanford University
+  
+  50 Serra Mall
+  
+  Jordan Hall, Building 420
+  
+  Stanford, CA 94301
+  
+
+abstract: |
+
+  
+keywords          : "Word learning; semantic network; phonological network; network growth; cross-linguistic analysis."
+
+header-includes:
+   #- \usepackage{bibentry}
+   - \usepackage[sortcites=false,sorting=none]{biblatex}
+
+   
+bibliography      : ["references.bib"]
+
+figsintext        : yes
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+lineno            : yes
+
+lang              : "english"
+class             : "man"
+output            : papaja::apa6_pdf 
+
+citation_package: biblatex
+
+---
+
+
+```{r}
+knitr::opts_chunk$set(echo=F, warning=F, cache=F, message=F, sanitize = T)
+```
+
+
+```{r load_packages, include = FALSE}
+library(papaja)
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(cowplot)
+library(ggpubr)
+library(knitr)
+library(boot)
+library(dplyr)
+library(gridExtra)
+library(langcog)
+library(ggthemes)
+library(broom)
+library(HDInterval)
+library(kableExtra)
+#library("knitcitations")
+#cleanbib()
+#options("citation_format" = "pandoc")
+```
+
+## Data
+
+Children with Autism - Words & Sentences. 
+
+Since data of Children with Autism would be compared with the dataset of typically developed children, we only adopted the entries that are words which resemble the ones from Wordbankr, which include vocabularies, word endings, and word forms. Entries that included longer sentences and complicated words were excluded. Table \@ref(tab:exclude) gives an overview of the entries that were excluded.
+
+More data was lost when we are matching words that have AoA data for both typically developed children and ASD children. As a result, 20.5 percent of the ASD data was lost. While matching the dataset with the two groups, we used the column uni_lemma instead of definition since uni_lemma does not include special characters such as "*"; however, some entries included parentheses that could cause failure in matching. Table \@ref(tab:nmatch) gives some examples of words that did not get matched. Further cleaning could be done in the dataset for a high percent of data retention.
+
+We kept words form all lexical class for examining the difference in AoA across the lexical class, while only nouns were kept when progressing into computing data growth.
+
+We also observed that the data was extremely sparse after a certain age point. The upper limit was set to use a threshold of 15 entries per age, so after an age that includes less than 15 children's entries, in this case at age 45, data beyond that the age point was excluded. 
+
+
+```{r exclude, results="asis", echo=FALSE}
+eliminated_WS <- feather::read_feather("../saved_data/eliminated_WS.feather")
+
+kable(eliminated_WS,format = "latex",linesep = "",format.args = list(big.mark = ","),booktabs = TRUE,
+      caption = "Entries eliminated.",
+      col.names = c("Column Names","Description"))%>%
+  column_spec(1, bold = TRUE) %>%
+  kable_styling(position = "center",latex_options = "scale_down")
+```
+
+```{r nmatch2, results="asis", echo=FALSE}
+No_match_AS_WS <- feather::read_feather("../saved_data/No_match_AS_WS.feather")
+
+No_match_AS_WS<- No_match_AS_WS %>%
+  select(c(lexical_class,measure,definition,uni_lemma))
+  
+kable(No_match_AS_WS,format = "latex",linesep = "",format.args = list(big.mark = ","),booktabs = TRUE,
+      caption = "Entries that did not match.")%>%
+  column_spec(1, bold = TRUE) %>%
+  kable_styling(position = "center")
+```
+
+Children with Autism - Words & Gestures.
+
+The structure of data largely resemble the word & sentences data frame; however, many gesture words have duplicated name since no categories were given for differentiation. Table \@ref(tab:duplicatedwg) gives the list of the duplicated words. Since it is hard to assign context for the word, of two duplicated words, the word that has lower AoA is dropped. Further data were excluded when we selected the words that have the age of acquisition for both groups, 10.3 percent of data was lost. Table \@ref(tab:nmatch2) gives some examples of words that did not get matched.
+
+In order to exclude parts of data that are too sparse, similarly to the words & sentences, an upper limit at age 49 was set to use a threshold of 15 entries per age, data beyond that the age point was excluded. 
+
+```{r duplicatedwg, results="asis", echo=FALSE}
+duplicated_AS_WG <- feather::read_feather("../saved_data/AS_WG_duplicated.feather") %>%
+  slice(0:0)
+
+kable(duplicated_AS_WG,format = "latex",linesep = "",format.args = list(big.mark = ","),booktabs = TRUE,
+      caption = "Words that are duplicated.")%>%
+  #column_spec(1, bold = TRUE) %>%
+  kable_styling(position = "center")
+```
+
+```{r nmatch, results="asis", echo=FALSE}
+No_match_AS_WG <- feather::read_feather("../saved_data/No_match_AS_WG.feather")
+
+No_match_AS_WG<- No_match_AS_WG %>%
+  select(c(lexical_class,measure,definition,uni_lemma))
+  
+kable(No_match_AS_WG,format = "latex",linesep = "",format.args = list(big.mark = ","),booktabs = TRUE,
+      caption = "Entries that did not match.")%>%
+  column_spec(1, bold = TRUE) %>%
+  kable_styling(position = "center")
+```

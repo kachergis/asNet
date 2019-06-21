@@ -54,6 +54,8 @@ data_raw_AS_WG = data_raw_AS_WG[-1, ]
 # what are the duplicated
 AS_WG_duplicated <- data_raw_AS_WG[duplicated(colnames(data_raw_AS_WG))] # can call colnames 
 
+#feather::write_feather(AS_WG_duplicated, "saved_data/AS_WG_duplicated.feather")
+
 # making column names unique
 names(data_raw_AS_WG) <- make.unique(names(data_raw_AS_WG), sep="_")
 
@@ -170,6 +172,12 @@ all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "defin
          diff = aoa_AS - aoa_TD,
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
+
+No_match_AS_WG <- anti_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "definition"))#%>%
+  #head(10)
+
+#feather::write_feather(No_match_AS_WG,"saved_data/No_match_AS_WG.feather")
+
 
 most_diff_aoa <-  all_aoa_WG %>% head(10)
 least_diff_aoa <- tail(all_aoa_WG, 10)
@@ -420,7 +428,7 @@ aoa_by_measure_lang <- all_aoa_WG %>%
   
   
 data_growth_AS_WG <- map(aoa_by_measure_lang, make_data_growth) %>%
-  bind_rows() # age range from 56 month to 248 month?
+  bind_rows() # age range from 56 month to 248 month? wiered!!!!
 
 #feather::write_feather(data_growth_AS_WG,"saved_data/data_growth_AS_WG.feather")
 

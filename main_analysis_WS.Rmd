@@ -4,7 +4,7 @@ author: "_"
 output: html_document
 ---
 
-# how many we lose when combining with left bind TD data ( how many percent, what are the words (exmaples)) 
+# left to do how many we lose when combining with left bind TD data ( how many percent, what are the words (exmaples)) 
 
 
 ```{r setup, include=FALSE}
@@ -45,7 +45,12 @@ names(description_WS) <- "description"
 
 # what we get rid of:
 eliminated_WS <- data_AS_WS%>%
-  select(c(701:709,780:850))
+  select(c(701:709,780:850))%>%
+  slice(1:1)%>%
+  gather(key = "Column names", value = "Description")#%>%
+  #head(10)
+
+#feather::write_feather(eliminated_WS,"saved_data/eliminated_WS.feather")
 
 #using mci_sentences02_id	as a disctincetive id and The NDAR Global Unique Identifier 
 data_raw_AS_WS <- data_AS_WS %>%
@@ -139,7 +144,12 @@ all_aoa_WS <- inner_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "defin
          diff = aoa_AS - aoa_TD,
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
-  
+
+No_match_AS_WS <- anti_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "definition"))#%>%
+  #head(10)
+
+#feather::write_feather(No_match_AS_WS,"saved_data/No_match_AS_WS.feather")
+
 most_diff_aoa <-  all_aoa_WS %>% head(10)
 least_diff_aoa <- tail(all_aoa_WS, 10)
 
