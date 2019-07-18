@@ -4,7 +4,7 @@ author: "_"
 output: html_document
 ---
 
-# left to do how many we lose when combining with left bind TD data ( how many percent, what are the words (exmaples)) 
+# look at the words that did not match 
 
 
 ```{r setup, include=FALSE}
@@ -20,6 +20,7 @@ library(feather)
 library(poweRlaw)
 library(wordbankr)
 library(rwebppl)
+library(qdapRegex)
 
 #Load helper functions
 source(paste(getwd(),"/helper_functions/all_helper.r",sep = ""), chdir = T)
@@ -132,6 +133,8 @@ Load aoa dataframe from TD
 data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
   filter(measure == "produces")
 
+data_aoa_TD$uni_lemma = rm_between(data_aoa_TD$uni_lemma,'(', ')',extract = F, clean = T)
+
 # decided using uni_lemma, uni_lemma does not have *, however, sometimes it has ()that gave further definition which could be interesting for matching 
 
 #which(!data_aoa_TD$uni_lemma == data_aoa_TD$definition)
@@ -145,6 +148,8 @@ all_aoa_WS <- inner_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "defin
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
 
+
+ 
 No_match_AS_WS <- anti_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "definition"))#%>%
   #head(10)
 

@@ -164,6 +164,8 @@ data_aoa_AS_WG <- feather::read_feather("saved_data/data_aoa_AS_WG.feather")
 data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
   filter(measure == "understands")
 
+data_aoa_TD$uni_lemma = rm_between(data_aoa_TD$uni_lemma,'(', ')',extract = F, clean = T)
+
 all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "definition"))%>%
   rename(aoa_TD = aoa,
          aoa_AS = aoa_AS)%>%
