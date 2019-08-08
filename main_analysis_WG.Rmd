@@ -18,6 +18,7 @@ library(poweRlaw)
 library(wordbankr)
 library(rwebppl)
 library(lme4)
+library(qdapRegex)
 
 #Load helper functions
 source(paste(getwd(),"/helper_functions/all_helper.r",sep = ""), chdir = T)
@@ -164,9 +165,10 @@ data_aoa_AS_WG <- feather::read_feather("saved_data/data_aoa_AS_WG.feather")
 data_aoa_TD <- feather::read_feather("saved_data/data_aoa_TD.feather")%>%
   filter(measure == "understands")
 
-data_aoa_TD$uni_lemma = rm_between(data_aoa_TD$uni_lemma,'(', ')',extract = F, clean = T)
+data_aoa_TD$definition = rm_between(data_aoa_TD$definition,'(', ')',extract = F, clean = T)
+data_aoa_TD$definition <- gsub("*", "", data_aoa_TD$definition, fixed = TRUE)
 
-all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "definition"))%>%
+all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")%>%
   rename(aoa_TD = aoa,
          aoa_AS = aoa_AS)%>%
   filter(aoa_TD > 0)%>% # note that i've applied filter here 
@@ -175,7 +177,7 @@ all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "defin
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
 
-No_match_AS_WG <- anti_join(data_aoa_TD,data_aoa_AS_WG, by = c("uni_lemma" = "definition"))#%>%
+No_match_AS_WG <- anti_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")#%>%
   #head(10)
 
 #feather::write_feather(No_match_AS_WG,"saved_data/No_match_AS_WG.feather")
