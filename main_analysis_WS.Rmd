@@ -146,9 +146,17 @@ all_aoa_WS <- inner_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "defin
   mutate(
          diff = aoa_AS - aoa_TD,
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
-  arrange(desc(diff_perc)) 
+  arrange(desc(diff_perc)) %>%
+  mutate(id = row_number())
 
+polysemy<- all_aoa_WS %>%
+  filter(uni_lemma %in% unique(.[["uni_lemma"]][duplicated(.[["uni_lemma"]])]))
 
+all_aoa_WS <- all_aoa_WS%>%
+  filter(!id %in% c("651","147","368","596","608","332","414","240","422","126","370","74","657","461","653","247","610","340","607","218","259","497","645","186","267","230"))%>%
+  select(-id)
+
+# identify column that has duplicate names, maunally picking out 
  
 No_match_AS_WS <- anti_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "definition"))#%>%
   #head(10)

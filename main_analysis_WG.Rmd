@@ -128,7 +128,9 @@ data_aoa_AS_WG <- map(list_by_item, fit_inst_measure_uni) %>%
 list_of_values <- c("chicken","fish_1","water_1","drink","swing_1","watch","clean_1","backyard_1")
 
 data_aoa_AS_WG<- data_aoa_AS_WG %>%
-  filter(!definition %in% list_of_values) # get rid of thoes rows
+  filter(!definition %in% list_of_values)
+
+data_aoa_AS_WG$definition <- gsub("_1", "", data_aoa_AS_WG$definition, fixed = TRUE)
 
 # dropping lower aoa 
 
@@ -158,6 +160,7 @@ data_aoa_AS_WG<- data_aoa_AS_WG %>%
 
 #feather::write_feather(data_aoa_AS_WG, "saved_data/data_aoa_AS_WG.feather")
 data_aoa_AS_WG <- feather::read_feather("saved_data/data_aoa_AS_WG.feather") 
+data_aoa_AS_WS <- feather::read_feather("saved_data/data_aoa_AS_WS.feather") 
 ```
 
 
@@ -178,7 +181,7 @@ all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")%>%
   arrange(desc(diff_perc)) 
 
 No_match_AS_WG <- anti_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")#%>%
-  #head(10)
+
 
 #feather::write_feather(No_match_AS_WG,"saved_data/No_match_AS_WG.feather")
 
@@ -813,3 +816,18 @@ plot_reg_comp <- ggplot(subset(coefs_all, measure =="understands"), aes(x = pred
  
 plot_reg_comp
 ```
+
+# word across both forms
+
+```{r}
+data_aoa_both <- inner_join(data_aoa_AS_WS,data_aoa_AS_WG, by = "definition")%>%
+   rename(aoa_WS = aoa_AS.x,
+         aoa_WG = aoa_AS.y)
+
+boxplot(data_aoa_both$aoa_WS,data_aoa_both$aoa_WG,
+        main = "AoA comparison across the same group of words",
+        names = c("WS","WG"),
+        xlab = "AoA",
+        horizontal = TRUE)
+```
+
