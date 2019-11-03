@@ -1,0 +1,174 @@
+---
+title: "Chapter 12 graphs"
+output: html_document
+---
+
+```{r}
+items_as <- read_feather("saved_data/all_aoa_WS.feather")
+colnames(items_as)[colnames(items_as)=="item"] <- "item_id"
+colnames(items_as)[colnames(items_as)=="lexical_class"] <- "lexical_category"
+
+WSs <- "WS"
+form <- "WS"
+
+l <- "English (American)"
+
+items <- items %>%
+  filter(type == "word",
+         language == l,
+         form == "WS") %>%
+  mutate(num_item_id = as.numeric(substr(item_id, 6, nchar(item_id))))
+
+item_n <-  inner_join(items, items_as, by = "uni_lemma")%>%
+  select(1:11)
+
+names(item_n) <- c("item_id","definition","language","form","type","category"       ,"lexical_category","lexical_class","uni_lemma","complexity_category","num_item_id")
+
+#remove(item_n)
+```
+
+```{r catsyn-vocab_comp_fun}
+get_vocab_data(l,form)
+
+get_vocab_data <- function(input_language, input_form) {
+  print(paste(input_language, input_form))
+  
+  lang_vocab_items <- item_n %>%
+    filter(language == input_language, form == input_form,
+           lexical_category %in% c("nouns", "predicates", "function_words"))
+  
+  get_instrument_data(language = input_language,
+                      form = input_form,
+                      items = lang_vocab_items$item_id,
+                      iteminfo = lang_vocab_items) %>%
+    mutate(value = ifelse(is.na(value), "", value),
+           produces = value == "produces") %>%
+    select(-value) %>%
+    gather(measure, value, produces) %>%
+    mutate(num_words = nrow(lang_vocab_items),
+           language = input_language, form = input_form)
+}
+
+get_vocab_comp <- function(lang_vocab_data, group) {
+  group <- rlang::enquo(group)
+  
+  num_words <- n_distinct(lang_vocab_data$item_id)
+  lang_vocab_summary <- lang_vocab_data %>%
+    group_by(data_id, measure, !!group) %>%
+    summarise(num_true = sum(value),
+              total = n(),
+              prop = num_true / total)
+  
+  lang_vocab_sizes <- lang_vocab_summary %>%
+    group_by(data_id, measure) %>%
+    summarise(vocab_num = sum(num_true),
+              vocab = vocab_num / num_words)
+  
+  lang_vocab_summary %>%
+    left_join(lang_vocab_sizes) %>%
+    mutate(prop_vocab = num_true / vocab_num) %>%
+    select(-num_true)
+
+}
+```
+
+```{r catsyn-vocab_comp, eval=FALSE}
+instruments_inc <- instruments %>%
+  filter(form %in% WSs,
+         language == l) %>%
+  select(language, form) %>%
+  distinct()
+
+vocab_data <- instruments_inc %>%
+  mutate(inst_vocab_data = map2(language, form, get_vocab_data))
+
+vocab_comp_category <- vocab_data %>%
+  mutate(vocab_comp = map(inst_vocab_data, ~get_vocab_comp(., lexical_category)))
+
+vocab_comp_class <- vocab_data %>%
+  mutate(vocab_comp = map(inst_vocab_data, ~get_vocab_comp(., lexical_class)))
+  
+vocab_comp_data <- vocab_comp_category %>%
+  select(-inst_vocab_data) %>%
+  unnest()
+
+class_data <- vocab_comp_class %>%
+  select(-inst_vocab_data) %>%
+  unnest()
+```
+
+```{r catsyn-exclude-longs, eval=FALSE}
+# take earliest administration for any child with multiple administrations
+# first_longitudinals <- admins %>%
+#   filter(longitudinal) %>%
+#   group_by(source_name, original_id) %>%
+#   arrange(age) %>%
+#   slice(1)
+# 
+# cross_sectionals <- admins %>%
+#   filter(!longitudinal | data_id %in% first_longitudinals$data_id)
+# 
+# vocab_comp_data <- vocab_comp_data %>% filter(data_id %in% cross_sectionals$data_id) # ?
+# class_data <- class_data %>% filter(data_id %in% cross_sectionals$data_id)
+# 
+
+```
+
+```{r catsyn-sample-sizes}
+
+# forms <- bind_rows(
+#   as_tibble(WSs) %>% rename(form = value) %>% mutate(form_type = "WSs"),
+#   as_tibble(WGs) %>% rename(form = value) %>% mutate(form_type = "WGs")
+# )
+# 
+# vocab_comp_data <- read_feather("data/categories-syntactic/vocab_comp_data.feather") %>%
+#   mutate(lexical_category = lexical_category %>%
+#            fct_relevel(c("nouns", "predicates", "function_words")) %>%
+#            fct_recode("Nouns" = "nouns", "Predicates" = "predicates",
+#                       "Function words" = "function_words"),
+#          measure = fct_relevel(measure, "understands")) %>%
+#   left_join(forms) %>%
+#   group_by(language, form_type) %>%
+#   mutate(num_forms = n_distinct(form),
+#          langform = if_else(num_forms > 1,
+#                             paste(language, form, sep = .inst_sep), language))
+```
+
+```{r catsyn-plot-area-demo, fig.cap="For American English WS data, proportion of each lexical category produced by each child as a function of the proportion of all vocabulary items produced by that child. Lines show model fits.", fig.height=3}
+
+pts <- seq(0, 1, 0.01)
+
+demo_predictions <- vocab_comp_data %>%
+  group_by(lexical_category) %>%
+  nest() %>%
+  mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
+         predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
+  select(lexical_category, predictions) %>%
+  unnest() %>%
+  rename(prop = .fitted)
+
+demo_diagonal <- cross_df(list(vocab = rev(pts),
+                               lexical_category = unique(vocab_comp_data$lexical_category))) %>%
+  mutate(prop = vocab)
+
+demo_area_poly <- bind_rows(demo_predictions, demo_diagonal)
+
+vocab_scale <- scale_x_continuous(limits = c(0, 1), expand = c(0.01, 0),
+                                  breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1),
+                                  name = "Vocabulary size")
+prop_scale <- scale_y_continuous(limits = c(0, 1), expand = c(0.01, 0),
+                                 breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1),
+                                 name = "Proportion of category")
+
+ggplot(demo_predictions, aes(x = vocab, y = prop, colour = lexical_category)) +
+  facet_grid(. ~ lexical_category) +
+  coord_fixed() +
+  geom_point(data = vocab_comp_data, alpha = .03, size = 0.6) +
+  geom_line(size = 1.5) +
+  geom_polygon(data = demo_area_poly, aes(fill = lexical_category), alpha = 0.2) +
+  vocab_scale +
+  prop_scale +
+  .scale_colour_discrete(guide = FALSE) +
+  .scale_fill_discrete(guide = FALSE) 
+```
+
