@@ -3,6 +3,7 @@ title: "Chapter 12 graphs"
 output: html_document
 ---
 
+# code for generating graphs from chapter 11.4
 ```{r}
 items_as <- read_feather("saved_data/all_aoa_WS.feather")
 colnames(items_as)[colnames(items_as)=="item"] <- "item_id"
