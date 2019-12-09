@@ -351,10 +351,14 @@ demo_predictions_TD <- vocab_comp_data_TD %>%
   nest() %>%
   mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
          predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
-  select(category, predictions) %>%
+  select(category, predictions)%>%
   unnest() %>%
   rename(prop = .fitted)%>%
   mutate(level = "TD")
+
+
+demo_predictions_TD$prop <- signif(demo_predictions_TD$prop,digits=4 )
+
 
 demo_diagonal_TD <- cross_df(list(vocab = rev(pts),
                                category = unique(vocab_comp_data_TD$category))) %>%
@@ -373,6 +377,8 @@ demo_predictions_AS <- vocab_comp_data_AS %>%
   rename(prop = .fitted)%>%
   mutate(level = "AS")
 
+demo_predictions_AS$prop <- signif(demo_predictions_AS$prop,digits=4 )
+
 demo_diagonal_AS <- cross_df(list(vocab = rev(pts),
                                category = unique(vocab_comp_data_AS$category))) %>%
   mutate(prop = vocab)
@@ -384,15 +390,22 @@ demo_area_poly_AS <- bind_rows(demo_predictions_AS, demo_diagonal_AS)
 demo_predictions_all <- rbind(demo_predictions_AS,demo_predictions_TD)
 demo_predictions_all_c <- cbind(demo_predictions_AS,demo_predictions_TD)
 
+#demo_predictions_all_c$prop.y <- round(demo_predictions_all_c$prop.y, 2)
+#demo_predictions_all_c <- round(demo_predictions_all_c$pro, 2)
+
 colnames(demo_predictions_all_c)[5:8] <- c("category.y","vocab.y","prop.y","level.y")
 
 demo_predictions_all_c <- demo_predictions_all_c %>%
   mutate(diff = prop - prop.y)
   
+demo_predictions_all_c$prop <- signif(demo_predictions_all_c$prop,digits=2 )
+
+demo_predictions_all_c$prop.y <- signif(demo_predictions_all_c$prop.y,digits=2 )
+
 vocab_scale <- scale_x_continuous(limits = c(0, 1), expand = c(0.01, 0),
                                   breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1),
                                   name = "Vocabulary size")
-prop_scale <- scale_y_continuous(limits = c(0, 1), expand = c(0.01, 0),
+prop_scale <- scale_y_continuous(limits = c(0, 1.01), expand = c(0.01, 0),
                                  breaks = c(0, 0.5, 1), labels = c(0, 0.5, 1),
                                  name = "Proportion of category")
 
@@ -400,9 +413,9 @@ ggplot(demo_predictions_all_c, aes(x = vocab, y = prop, colour = category)) +
   facet_wrap(. ~ category,ncol = 5) +
   coord_fixed() +
   #geom_point(alpha = .03, size = 0.6) +
-  geom_line(data = demo_predictions_TD, aes(x = vocab, y = prop), size = .5, color = "grey") +
+  geom_line(data = demo_predictions_TD, aes(x = vocab, y = prop), size = .5, color = "darkgrey") +
   geom_line(data = demo_predictions_AS, aes(x = vocab, y = prop), size = .5) +
-  geom_polygon(data = demo_area_poly_AS, aes(fill = category), alpha = .1,color = NA) +
+  #geom_polygon(data = demo_area_poly_AS, aes(fill = category), alpha = .1,color = NA) +
   #geom_polygon(data = demo_area_poly_TD, aes(fill = category), alpha = .1,color = NA)+
   vocab_scale +
   prop_scale +
@@ -412,3 +425,22 @@ ggplot(demo_predictions_all_c, aes(x = vocab, y = prop, colour = category)) +
   theme_bw()
   
 ```
+
+
+```{r}
+bp <- demo_predictions_TD %>%
+  filter(category == "body_parts") # prop over 1
+
+overlimit_TD <- demo_predictions_TD %>%
+  filter(prop >1 )
+
+overlimit_AS <- demo_predictions_AS %>%
+  filter(prop >1 )
+
+vocab_comp_data_AS %>%
+  filter(prop > 1)
+
+vocab_comp_data_TD %>%
+  filter(prop > 1)
+```
+
