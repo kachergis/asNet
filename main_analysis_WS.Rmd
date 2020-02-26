@@ -9,16 +9,46 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(arm)
+library(binom)
+library(bookdown)
+library(corrplot)
+library(cowplot)
+library(directlabels)
+library(DT)
+library(extrafont)
+library(ggdendro)
+library(ggfortify)
+library(ggrepel)
+library(ggstance)
+library(ggthemes)
+library(glue)
+library(gridExtra)
+library(Hmisc)
+library(knitr)
+library(kableExtra)
+library(lavaan)
+library(lme4)
+library(lmerTest)
+library(maps)
+library(mirt)
+library(pander)
+library(quantregGrowth)
+library(rmarkdown)
+library(robustbase)
+library(semPlot)
+library(stringdist)
+library(tidyverse)
+library(widyr)
+library(viridis)
 library(dplyr)
 library(tidyr)
 library(stringr)
 library(boot)
 library(purrr)
 library(ggplot2)
-library(ggthemes)
 library(feather)
 library(poweRlaw)
-library(wordbankr)
 library(rwebppl)
 library(qdapRegex)
 
@@ -72,6 +102,10 @@ data_clean_AS_WS <- data_raw_AS_WS %>%
   separate(definition, c("category","definition"),sep = "\\. ") %>%
   mutate_all(na_if,"",)%>% #if blank then fill in NA
    mutate(value = ifelse(value == 0, FALSE, TRUE))
+
+#for chapter 12 analysis
+#feather::write_feather(data_clean_AS_WS,"saved_data/data_clean_AS_WS.feather")
+
 
 data_all_AS_WS <- data_clean_AS_WS %>%
      group_by(category, definition, age) %>%
@@ -157,6 +191,7 @@ all_aoa_WS <- all_aoa_WS%>%
   select(-id)
 
 # identify column that has duplicate names, maunally picking out 
+feather::write_feather(all_aoa_WS,"saved_data/all_aoa_WS.feather")
  
 No_match_AS_WS <- anti_join(data_aoa_TD,data_aoa_AS_WS, by = c("uni_lemma" = "definition"))#%>%
   #head(10)
@@ -900,4 +935,30 @@ plot_reg_prod <- ggplot(subset(coefs_all, measure =="produces"), aes(x = predict
   theme(aspect.ratio = 0.7)
  
 plot_reg_prod
+```
+
+Reproduction of 12 Analysis. 
+
+```{r catsem-cat-var}
+library(raster)
+
+animal_words <- read_feather("data/categories-semantic/animal_words.feather")
+cat_var <- bind_rows(animal_words %>% mutate(category = "animals")) %>%
+  filter(age > 21, age < 27) %>%
+  group_by(category, uni_lemma, language) %>%
+  summarise(mean = mean(mean)) %>% # average across ages
+  group_by(category, uni_lemma) %>%
+  summarise(cv = cv(mean), 
+            sem = cv(mean), 
+            n = n()) %>%
+  group_by(category) %>%
+  summarise(cv = mean(cv), 
+            sem = mean(sem), 
+            n = mean(n)) %>%
+  mutate(category = category %>% str_to_title())
+
+cat_var %>%
+  kable(digits = 2, col.names = c("Category", "CV", "SEM","N"),
+        caption = "Mean coefficient of variation for each semantic category.")
+
 ```

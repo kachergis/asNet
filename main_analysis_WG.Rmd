@@ -180,6 +180,9 @@ all_aoa_WG <- inner_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")%>%
          diff_perc = (aoa_AS - aoa_TD)/aoa_TD*100)%>%
   arrange(desc(diff_perc)) 
 
+#feather::write_feather(all_aoa_WG,"saved_data/all_aoa_WG.feather")
+
+
 No_match_AS_WG <- anti_join(data_aoa_TD,data_aoa_AS_WG, by = "definition")#%>%
 
 
