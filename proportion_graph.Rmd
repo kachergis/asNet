@@ -106,7 +106,7 @@ get_vocab_data <- function(input_language, input_form) {
     gather(measure, value, produces) %>%
     mutate(num_words = nrow(lang_vocab_items),
            language = input_language, form = input_form) %>%
-    filter(form %in% WGs | measure == "produces")
+    filter(form %in% WGs | measure == "produces") 
 }
 
 get_vocab_comp <- function(lang_vocab_data, group) {
@@ -134,7 +134,7 @@ get_vocab_comp <- function(lang_vocab_data, group) {
 
 ```{r catsyn-vocab_comp, eval=FALSE}
 instruments_inc <- instruments %>%
-  filter(form == "WS",
+  filter(form == "WG",
          language == "English (American)") %>%
   select(language, form)
 
@@ -389,6 +389,10 @@ demo_area_poly_AS <- bind_rows(demo_predictions_AS, demo_diagonal_AS)
 
 demo_predictions_all <- rbind(demo_predictions_AS,demo_predictions_TD)
 demo_predictions_all_c <- cbind(demo_predictions_AS,demo_predictions_TD)
+
+demo_predictions_AS <- read_feather("saved_data/demo_predictions_AS")
+demo_predictions_TD <- read_feather("saved_data/demo_predictions_TD")
+demo_predictions_all_c <- read_feather("saved_data/demo_predictions_all_c")
 
 #demo_predictions_all_c$prop.y <- round(demo_predictions_all_c$prop.y, 2)
 #demo_predictions_all_c <- round(demo_predictions_all_c$pro, 2)
