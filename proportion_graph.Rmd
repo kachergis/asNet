@@ -62,8 +62,8 @@ source("helper/stats_funs.R")
 instruments <- read_feather("data/_common/instruments.feather")
 admins <- read_feather("data/_common/admins.feather")
 items <- read_feather("data/_common/items.feather")
-
-
+select <- dplyr::select
+map <- purrr::map
 ```
 
 
@@ -77,7 +77,7 @@ items_n <- items %>%
   mutate(num_item_id = as.numeric(substr(item_id, 6, nchar(item_id))))
 
 items_as <- read_feather("saved_data/all_aoa_WS.feather")%>%
-  select(-c(item, id))
+  select(-item) #@ deleted id
 
 items_as_c <-items_as%>%
   inner_join(items_n, by = c("uni_lemma" = "definition"))%>%
@@ -132,23 +132,25 @@ get_vocab_comp <- function(lang_vocab_data, group) {
 }
 ```
 
+# run long time
 ```{r catsyn-vocab_comp, eval=FALSE}
 instruments_inc <- instruments %>%
-  filter(form == "WG",
+  filter(form == "WS",
          language == "English (American)") %>%
   select(language, form)
 
 vocab_data <- instruments_inc %>%
-  mutate(inst_vocab_data = map2(language, form, get_vocab_data))
+  mutate(inst_vocab_data = purrr::map2(language, form, get_vocab_data))
 
 vocab_comp_category <- vocab_data %>%
-  mutate(vocab_comp = map(inst_vocab_data, ~get_vocab_comp(., category)))
+  mutate(vocab_comp = purrr::map(inst_vocab_data, ~get_vocab_comp(., category)))
 
 vocab_comp_data <- vocab_comp_category %>%
   select(-inst_vocab_data) %>%
   unnest()
 
 ```
+---
 
 ```{r catsyn-sample-sizes}
 form <- "WS"
@@ -177,8 +179,8 @@ pts <- seq(0, 1, 0.01)
 demo_predictions_TD <- vocab_comp_data_TD %>%
   group_by(category) %>%
   nest() %>%
-  mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
-         predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
+  mutate(model = purrr::map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
+         predictions = purrr::map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
   select(category, predictions) %>%
   unnest() %>%
   rename(prop = .fitted)%>%
@@ -194,8 +196,8 @@ demo_area_poly_TD <- bind_rows(demo_predictions_TD, demo_diagonal_TD)
 demo_predictions_AS <- vocab_comp_data_AS %>%
   group_by(category) %>%
   nest() %>%
-  mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
-         predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
+  mutate(model = purrr::map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
+         predictions = purrr::map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
   select(category, predictions) %>%
   unnest() %>%
   rename(prop = .fitted)%>%
@@ -211,6 +213,12 @@ demo_area_poly_AS <- bind_rows(demo_predictions_AS, demo_diagonal_AS)
 
 demo_predictions_all <- rbind(demo_predictions_AS,demo_predictions_TD)
 demo_predictions_all_c <- cbind(demo_predictions_AS,demo_predictions_TD)
+
+#feather::write_feather(demo_predictions_all_c, "saved_data/demo_predictions_all_c_WS")
+
+```
+
+```{r}
 
 colnames(demo_predictions_all_c)[5:8] <- c("category.y","vocab.y","prop.y","level.y")
 
@@ -250,7 +258,7 @@ items_n <- items %>%
          language == "English (American)") %>%
   mutate(num_item_id = as.numeric(substr(item_id, 6, nchar(item_id))))
 
-items_as <- read_feather("all_aoa_WG.feather") %>%
+items_as <- read_feather("saved_data/all_aoa_WG.feather") %>%
   select(-item)
 
 items_as_c <-items_as%>%
@@ -304,6 +312,7 @@ get_vocab_comp <- function(lang_vocab_data, group) {
 }
 ```
 
+# long time 
 ```{r catsyn-vocab_comp, eval=FALSE}
 instruments_inc <- instruments %>%
   filter(form == "WG",
@@ -311,16 +320,18 @@ instruments_inc <- instruments %>%
   select(language, form)
 
 vocab_data <- instruments_inc %>%
-  mutate(inst_vocab_data = map2(language, form, get_vocab_data))
+  mutate(inst_vocab_data = purrr::map2(language, form, get_vocab_data))
 
 vocab_comp_category <- vocab_data %>%
-  mutate(vocab_comp = map(inst_vocab_data, ~get_vocab_comp(., category)))
+  mutate(vocab_comp = purrr::map(inst_vocab_data, ~get_vocab_comp(., category)))
 
 vocab_comp_data <- vocab_comp_category %>%
   select(-inst_vocab_data) %>%
   unnest()
 
 ```
+
+---
 
 ```{r catsyn-sample-sizes}
 form <- "WG"
@@ -349,9 +360,9 @@ pts <- seq(0, 1, 0.01)
 demo_predictions_TD <- vocab_comp_data_TD %>%
   group_by(category) %>%
   nest() %>%
-  mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
-         predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
-  select(category, predictions)%>%
+  mutate(model = purrr::purrr::map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
+         predictions = purrr::purrr::map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
+  dplyr::select(c(category, predictions))%>%
   unnest() %>%
   rename(prop = .fitted)%>%
   mutate(level = "TD")
@@ -370,9 +381,9 @@ demo_area_poly_TD <- bind_rows(demo_predictions_TD, demo_diagonal_TD)
 demo_predictions_AS <- vocab_comp_data_AS %>%
   group_by(category) %>%
   nest() %>%
-  mutate(model = map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
-         predictions = map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
-  select(category, predictions) %>%
+  mutate(model = purrr::map(data, ~clm(prop ~ I(vocab ^ 3) + I(vocab ^ 2) + vocab - 1, data = .)),
+         predictions = purrr::map(model, ~broom::augment(., newdata = tibble(vocab = pts)))) %>%
+  dplyr::select(category, predictions) %>%
   unnest() %>%
   rename(prop = .fitted)%>%
   mutate(level = "AS")
@@ -390,10 +401,11 @@ demo_area_poly_AS <- bind_rows(demo_predictions_AS, demo_diagonal_AS)
 demo_predictions_all <- rbind(demo_predictions_AS,demo_predictions_TD)
 demo_predictions_all_c <- cbind(demo_predictions_AS,demo_predictions_TD)
 
-demo_predictions_AS <- read_feather("saved_data/demo_predictions_AS")
-demo_predictions_TD <- read_feather("saved_data/demo_predictions_TD")
-demo_predictions_all_c <- read_feather("saved_data/demo_predictions_all_c")
+# feather::write_feather(demo_predictions_all_c, "saved_data/demo_predictions_all_c_WG")
 
+```
+
+```{r}
 #demo_predictions_all_c$prop.y <- round(demo_predictions_all_c$prop.y, 2)
 #demo_predictions_all_c <- round(demo_predictions_all_c$pro, 2)
 
@@ -426,9 +438,12 @@ ggplot(demo_predictions_all_c, aes(x = vocab, y = prop, colour = category)) +
   geom_abline(slope = 1, intercept = 0, color = .grey, linetype = .refline)+
   .scale_colour_numerous(guide = FALSE) +
   .scale_fill_numerous(guide = FALSE)+
-  theme_bw()
+  theme_bw()+
+  labs(title = "WG")
   
 ```
+
+
 
 
 ```{r}
