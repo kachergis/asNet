@@ -17,7 +17,7 @@ require(tidyverse)
 
 ## Load ASD CDI:WS data
 
-```{r load-asd-ws}
+```{r load-asd-ws, eval=F}
 data_AS_WS <- read.delim("data/ASD CDI data/mci_sentences02.txt", header = TRUE, sep = "\t", dec = ".")
 
 # extracting first row as a descriptive dataframe
@@ -28,15 +28,20 @@ names(description_WS) <- "description"
 
 # what we get rid of:
 eliminated_WS <- data_AS_WS %>%
-  select(c(701:709,780:850)) %>%
+  dplyr::select(c(701:709,780:850)) %>%
   slice(1:1) %>%
   gather(key = "Column names", value = "Description")#%>%
   #head(10)
 
+# grammar items (past tense, future, not present, etc.)
+description_WS[701:709,]
+# complexity and examples (e.g. longest sentences)
+description_WS[780:850,]
+
 #using mci_sentences02_id	as a distinctive id and The NDAR Global Unique Identifier 
 data_raw_AS_WS <- data_AS_WS %>%
-  select(c("mci_sentences02_id","subjectkey","interview_age", 21:779)) %>% # starting from 785 is complexity. we kept vocabs, word endings, word forms.
-  select(-(684:692))
+  dplyr::select(c("mci_sentences02_id","subjectkey","interview_age", 21:779)) %>% # starting from 785 is complexity. we kept vocabs, word endings, word forms.
+  dplyr::select(-(684:692))
 
 colnames(data_raw_AS_WS) <- as.character(unlist(data_raw_AS_WS[1,])) #unlist the row
 data_raw_AS_WS = data_raw_AS_WS[-1, ]
@@ -59,6 +64,111 @@ data_all_AS_WS <- data_clean_AS_WS %>%
                  num_false = n() - num_true,
                  prop = num_true/n())
 
+
+data_clean_AS_WS <- data_clean_AS_WS %>% filter(category!="Word forms, noun", 
+                                                category!="Word forms, verbs",
+                                                category!="Word endings, nouns",
+                                                category!="Word endings, verbs") %>%
+  mutate(category = case_when(category=="Sound Effects and Animal Sounds" ~ "sounds",
+                              category=="Animals (Real or Toy)" ~ "animals",
+                              category=="Vehicles (Real or Toy)" ~ "vehicles",
+                              category=="Food and Drink" ~ "food_drink",
+                              category=="Clothinq" ~ "clothing",
+                              category=="Body Parts" ~ "body_parts",
+                              category=="Small Household Items" ~ "household",
+                              category=="Furniture and Rooms" ~ "furniture_rooms",
+                              category=="Outside Thlnqs" ~ "outside",
+                              category=="Action Words" ~ "action_words",
+                              category=="Places to Go" ~ "places",
+                              category=="Helping Verbs" ~ "helping_verbs",
+                              category=="Connectinq Words" ~ "connecting_words",
+                              category=="Descriptive Words" ~ "descriptive_words",
+                              category=="Words About Time" ~ "time_words",
+                              category=="Quantifiers and Articles" ~ "quantifiers",
+                              category=="Games and Routines" ~ "games_routines",
+                              category=="Question Words" ~ "question_words",
+                              category=="Prepositions and Locations" ~ "locations",
+                              category=="Helpinq Verbs" ~ "helping_verbs",
+                              TRUE ~ category)) %>%
+  mutate(category = tolower(category), 
+         definition = case_when(definition=="baa" ~ "baa baa",
+                                definition=="cockadoodle" ~ "cockadoodledoo",
+                                definition=="quack" ~ "quack quack",
+                                definition=="uhoh" ~ "uh oh",
+                                definition=="woof" ~ "woof woof",
+                                definition=="yum" ~ "yum yum",
+                                definition=="chicken" & category=="food_drink" ~ "chicken (food)",
+                                definition=="chicken" ~ "chicken (animal)",
+                                definition=="fish" & category=="food_drink" ~ "fish (food)",
+                                definition=="fish" ~ "fish (animal)",
+                                definition=="playdough" ~ "play dough",
+                                definition=="vagina" ~ "vagina*",
+                                definition=="penis" ~ "penis*",
+                                definition=="frenchfries" ~ "french fries",
+                                definition=="greenbeans" ~ "green beans",
+                                definition=="toy" ~ "toy (object)",
+                                definition=="drink" & category=="action_words" ~ "drink (action)",
+                                definition=="drink" ~ "drink (beverage)",
+                                definition=="gasstation" ~ "gas station",
+                                definition=="orange" & category=="food_drink" ~ "orange (food)",
+                                definition=="orange" ~ "orange (description)",
+                                definition=="allgone" ~ "all gone",
+                                definition=="water" & category=="food_drink" ~ "water (beverage)",
+                                definition=="water" ~ "water (not beverage)",
+                                definition=="feet" ~ "foot",
+                                definition=="callph" ~ "call (on phone)",
+                                definition=="clean" & category=="action_words" ~ "clean (action)",
+                                definition=="clean" ~ "clean (description)",
+                                definition=="owie  booboo" ~ "owie/boo boo",
+                                definition=="dont" ~ "don't",
+                                definition=="5bowl" ~ "bowl",
+                                definition=="can" & category=="household" ~ "can (object)",
+                                definition=="can" & category=="helping_verbs" ~ "can (auxiliary)",
+                                definition=="rockingchair" ~ "rocking chair",
+                                definition=="alot" ~ "a lot",
+                                definition=="buttocks/bottom" ~ "buttocks/bottom*",
+                                definition=="daddy" ~ "daddy*",
+                                definition=="childname" ~ "child's own name",
+                                definition=="washingmachine" ~ "washing machine",
+                                definition=="try" ~ "try/try to",
+                                definition=="work" & category=="places" ~ "work (place)",
+                                definition=="work" ~ "work (action)",
+                                definition=="giveme five" ~ "give me five!",
+                                definition=="mommy" ~ "mommy*",
+                                definition=="grandma" ~ "grandma*",
+                                definition=="church" ~ "church*",
+                                definition=="daddy" ~ "daddy*",
+                                definition=="grandpa" ~ "grandpa*",
+                                definition=="patty cake" ~ "pattycake",
+                                definition=="dry" & category=="action_words" ~ "dry (action)",
+                                definition=="dry" ~ "dry (description)",
+                                definition=="lemme" ~ "lemme/let me",
+                                definition=="tissklee" ~ "tissue/kleenex",
+                                definition=="did" ~ "did/did ya",
+                                definition=="gonna get  you" ~ "gonna get you!",
+                                definition=="peanutbutter" ~ "peanut butter",
+                                definition=="playpen" ~ "play pen",
+                                definition=="potatochip" ~ "potato chip",
+                                definition=="wanna" ~ "wanna/want to",
+                                definition=="watch" & category=="action_words" ~ "watch (action)",
+                                definition=="watch" ~ "watch (object)",
+                                definition=="dress" ~ "dress (object)",
+                                definition=="gonna" ~ "gonna/going to",
+                                definition=="gotta" ~ "gotta/got to",
+                                definition=="hafta" ~ "hafta/have to",
+                                definition=="highchair" ~ "high chair",
+                                definition=="lawnmower" ~ "lawn mower",
+                                definition=="little" ~ "little (description)",
+                                definition=="petname" ~ "pet's name",
+                                definition=="so big" ~ "so big!",
+                                definition=="need" ~ "need/need to",
+                                definition=="shush" ~ "shh/shush/hush",
+                                definition=="swing" & category=="action_words" ~ "swing (action)",
+                                definition=="swing" ~ "swing (object)",
+                                definition=="slide" & category=="action_words" ~ "slide (action)",
+                                definition=="slide" ~ "slide (object)",
+                                TRUE ~ definition))
+
 save(data_clean_AS_WS, file="data/ASD_WS.Rdata")
 
 summary(data_all_AS_WS)
@@ -67,7 +177,7 @@ summary(data_all_AS_WS)
 
 ## Load ASD CDI:WG data
 
-```{r load-asd-wg}
+```{r load-asd-wg, eval=F}
 data_AS_WG <- read.delim("data/ASD CDI data/mci_words_gestures01.txt", header = TRUE, sep = "\t", dec = ".")
 
 # extracting first row as a descriptive dataframe
@@ -120,6 +230,13 @@ summary(data_all_AS_WG)
 ```
 
 
+```{r load-asd-data}
+load("data/ASD_WS.Rdata") # data_clean_AS_WS
+load("data/ASD_WG.Rdata") # data_clean_AS_WG
+
+```
+
+
 ## Load Typically-Developing Data
 
 
@@ -130,14 +247,28 @@ base::load("data/eng_ws_raw_data.Rds")
 d_ws <- eng_ws %>%
   mutate(produces = value == "produces") %>%
   filter(!is.na(category)) %>% 
-  select(data_id, produces, age, production, sex, ethnicity, mom_ed, definition) %>%
+  dplyr::select(data_id, produces, age, production, sex, ethnicity, mom_ed, category, definition) %>%
   mutate(form="WS")
 
-wb_items = unique(d_ws$definition)
+wb_items = d_ws %>% distinct(category, definition)
+
+asd_items = data_clean_AS_WS %>% distinct(category, definition)
 
 # match ASD and wordbank defs:
-intersect(wb_items, description_WS$description)
+#intersect(wb_items$definition, asd_items$definition)
+#sort(setdiff(wb_items$definition, asd_items$definition))
+#sort(setdiff(asd_items$definition, wb_items$definition))
+
+
+#setdiff(wb_items$category, asd_items$category)
+#setdiff(asd_items$category, wb_items$category)
 
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## DIF Analysis for WS data
+
+```{r}
+
+```
+
+
