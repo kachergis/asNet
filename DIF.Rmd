@@ -187,12 +187,12 @@ names(description_WG) <- "description"
 
 # we only kept vocab 
 eliminated_WG <- data_AS_WG%>%
-  select(c(23:58,454:520))
+  dplyr::select(c(23:58,454:520))
 
 #using mci_words_gestures01_id as a distinctive id and The NDAR Global Unique Identifier 
 
 data_raw_AS_WG <- data_AS_WG %>%
-  select(c("mci_words_gestures01_id","subjectkey","interview_age", 59:453))
+  dplyr::select(c("mci_words_gestures01_id","subjectkey","interview_age", 59:453))
 
 colnames(data_raw_AS_WG) <- as.character(unlist(data_raw_AS_WG[1,])) #unlist the row
 data_raw_AS_WG = data_raw_AS_WG[-1, ]
@@ -223,6 +223,44 @@ data_all_AS_WG <- data_clean_AS_WG %>%
        summarise(num_true = sum(value, na.rm = TRUE),
                  num_false = n() - num_true,
                  prop= num_true/n())
+
+data_clean_AS_WG <- data_clean_AS_WG %>% 
+  mutate(definition = case_when(
+    definition=="bye or bye bye" ~ "bye",
+    definition=="chicken" ~ "chicken (animal)",
+    definition=="chicken_1" ~ "chicken (food)",
+    definition=="peek-a-boo" ~ "peekaboo",
+    definition=="water" ~ "water (beverage)",
+    definition=="water_1" ~ "water (not beverage)",
+    definition=="church" ~ "church*",
+    definition=="clean" ~ "clean (action)",
+    definition=="clean_1" ~ "clean (description)",
+    definition=="daddy" ~ "daddy*",
+    definition=="dress" ~ "dress (object)",
+    definition=="towl" ~ "towel",
+    definition=="grandpa" ~ "grandpa*",
+    definition=="grandma" ~ "grandma*",
+    definition=="mommy" ~ "mommy*",
+    definition=="owie/ boo boo" ~ "owie/boo boo",
+    definition=="little" ~ "little (description)",
+    definition=="drink" ~ "drink (beverage)",
+    definition=="drink_1" ~ "drink (action)",
+    definition=="dry" ~ "dry (description)",
+    definition=="fire truck" ~ "firetruck",
+    definition=="fish" ~ "fish (animal)",
+    definition=="fish_1" ~ "fish (food)",
+    definition=="toy" ~ "toy (object)",
+    definition=="teddy bear" ~ "teddybear",
+    definition=="swing" ~ "swing (object)",
+    definition=="swing_1" ~ "swing (action)",
+    definition=="work" ~ "work (place)",
+    definition=="orange" ~ "orange (food)",
+    definition=="patty cake" ~ "pattycake",
+    definition=="slide" ~ "slide (object)",
+    definition=="watch" ~ "watch (object)",
+    definition=="watch_1" ~ "watch (action)",
+    TRUE ~ definition
+  ))
 
 save(data_clean_AS_WG, file="data/ASD_WG.Rdata")
 
@@ -269,6 +307,57 @@ asd_items = data_clean_AS_WS %>% distinct(category, definition)
 
 ```{r}
 
+d_mat <- d_ws %>% dplyr::select(data_id, definition, produces) %>% 
+  pivot_wider(id_cols = data_id, names_from = definition, values_from = produces)
+  
+
+asd_mat <- data_clean_AS_WS %>% rename(data_id=id) %>%
+  dplyr::select(data_id, definition, value) %>% 
+  pivot_wider(id_cols = data_id, names_from = definition, values_from = value)
+
+demo_td <- d_ws %>% distinct(data_id, age, production, sex, ethnicity, mom_ed)
+demo_asd <- data_clean_AS_WS %>% rename(data_id=id) %>%
+  group_by(data_id, age) %>%
+  summarise(production = sum(value, na.rm=T)) 
+
+#cor.test(demo_asd$age, demo_asd$production) # .40
+#cor.test(demo_td$age, demo_td$production) # .75
+
+bad_Ss_td = demo_td[which(demo_td$production==0),]$data_id 
+bad_Ss_asd = demo_asd[which(demo_asd$production==0),]$data_id 
+
 ```
 
+`r length(bad_Ss_td)` typically-developing (TD) children were removed from the wordbank data (`r nrow(demo_td)` total) due to their not yet producing any words.
+`r length(bad_Ss_asd)` children with ASD were removed from the NDAR data (`r nrow(demo_asd)` total) due to their not yet producing any words.
+
+
+```{r}
+
+```
+
+
+
+# CDI:WG Production
+
+```{r}
+base::load("data/eng_wg_raw_data.Rds")
+
+d_wg <- eng_wg %>%
+  mutate(produces = value == "produces") %>%
+  filter(!is.na(category)) %>% 
+  dplyr::select(data_id, produces, age, production, sex, ethnicity, mom_ed, category, definition) %>%
+  mutate(form="WG")
+
+wg_items = d_wg %>% distinct(category, definition)
+
+asd_items = data_clean_AS_WG %>% distinct(definition)
+
+# match ASD and wordbank defs:
+intersect(wg_items$definition, asd_items$definition) # 394/396
+sort(setdiff(wg_items$definition, asd_items$definition)) # back throw
+sort(setdiff(asd_items$definition, wg_items$definition)) # backyard_1
+
+
+```
 
