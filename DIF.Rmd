@@ -307,7 +307,7 @@ asd_items = data_clean_AS_WS %>% distinct(category, definition)
 
 ```{r}
 
-d_mat <- d_ws %>% dplyr::select(data_id, definition, produces) %>% 
+td_mat <- d_ws %>% dplyr::select(data_id, definition, produces) %>% 
   pivot_wider(id_cols = data_id, names_from = definition, values_from = produces)
   
 
@@ -315,16 +315,38 @@ asd_mat <- data_clean_AS_WS %>% rename(data_id=id) %>%
   dplyr::select(data_id, definition, value) %>% 
   pivot_wider(id_cols = data_id, names_from = definition, values_from = value)
 
-demo_td <- d_ws %>% distinct(data_id, age, production, sex, ethnicity, mom_ed)
+demo_td <- d_ws %>% distinct(data_id, age, production, sex, ethnicity, mom_ed) %>% 
+  mutate(group = "TD")
 demo_asd <- data_clean_AS_WS %>% rename(data_id=id) %>%
-  group_by(data_id, age) %>%
+  mutate(data_id = as.numeric(data_id),
+         group = "ASD") %>%
+  group_by(data_id, age, group) %>%
   summarise(production = sum(value, na.rm=T)) 
 
 #cor.test(demo_asd$age, demo_asd$production) # .40
 #cor.test(demo_td$age, demo_td$production) # .75
 
+# no overlap in data_ids, right?
+#intersect(demo_td$data_id, demo_asd$data_id) # 0 - good
+
 bad_Ss_td = demo_td[which(demo_td$production==0),]$data_id 
 bad_Ss_asd = demo_asd[which(demo_asd$production==0),]$data_id 
+
+# combine data
+d_mat <- rbind(td_mat, asd_mat) %>% filter(!is.element(data_id, c(bad_Ss_asd, bad_Ss_td)))
+d_demo <- demo_td %>% dplyr::select(data_id, age, group, production) %>% 
+  bind_rows(demo_asd) %>%
+  filter(!is.element(data_id, c(bad_Ss_asd, bad_Ss_td)))
+
+sids = d_mat$data_id
+d_mat$data_id = NULL
+d_mat = data.matrix(d_mat)
+row.names(d_mat) = sids
+
+d_group = as.character(d_demo$group)
+
+source("helper_functions/DIF_helpers.R")
+
 
 ```
 
@@ -332,9 +354,19 @@ bad_Ss_asd = demo_asd[which(demo_asd$production==0),]$data_id
 `r length(bad_Ss_asd)` children with ASD were removed from the NDAR data (`r nrow(demo_asd)` total) due to their not yet producing any words.
 
 
-```{r}
+```{r fit-ws-model, eval=F}
+mod_dev_group <- fit_mod_intuitive(d_mat, d_group)
+
+save(mod_dev_group, file="data/prodWS_IRT_model.Rds")
+```
+
+```{r load-ws-model}
+load("data/prodWS_IRT_model.Rds")
+
+plot_glimmer(mod_dev_group, colnames(d_mat), colnames(d_mat), plotName="GLIMMER_asd_prodWS")
 
 ```
+
 
 
 
