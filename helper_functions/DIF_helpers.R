@@ -49,3 +49,56 @@ plot_glimmer <- function(mod_intuitive, item_names, items_to_plot, plotName='', 
                           limitsize = F) 
   return(p)
 }
+
+
+extract_group_df <- function(group_model, groups=c("Male","Female")) {
+  Mit = as_tibble(coef(group_model, simplify=T)[[groups[1]]]$items) %>%
+    mutate(definition = rownames(coef(group_model, simplify=T)[[groups[1]]]$items),
+           group1 = groups[1],
+           group2 = groups[2]) %>%
+    select(-g, -u) %>%
+    #mutate(d = -d) %>% # from easiness to difficulty
+    rename(d_g1 = d) 
+  Fit = as_tibble(coef(group_model, simplify=T)[[groups[2]]]$items) %>%
+    mutate(definition = rownames(coef(group_model, simplify=T)[[groups[2]]]$items)) %>%
+    select(-g, -u) %>%
+    #mutate(d = -d) %>% # from easiness to difficulty
+    rename(d_g2 = d) 
+    
+  
+  combo <- Mit %>% left_join(Fit) %>%
+    mutate(d_diff = d_g2 - d_g1,
+           d_diff_abs = abs(d_diff)) 
+  return(combo)
+}
+
+get_extreme_item_difficulty_differences <- function(mm) {
+  #yfit <- dnorm(mm$d_diff, mean = mean(mm$d_diff), sd = sd(mm$d_diff)) 
+  mm <- mm %>% mutate(d_diff = d_g2 - d_g1)
+  max_dif = mean(mm$d_diff) + 2*sd(mm$d_diff)
+  min_dif = mean(mm$d_diff) - 2*sd(mm$d_diff)
+  mm <- mm %>% mutate(extreme = ifelse((d_diff > max_dif) | (d_diff < min_dif), T, F))
+  print(paste("mininum difference:",min_dif, "maximum difference:",max_dif))
+  return(mm)
+}
+
+item_difficulty_difference_histogram <- function(mm, withNormal=F) {
+  #yfit <- dnorm(mm$d_diff, mean = mean(mm$d_diff), sd = sd(mm$d_diff)) 
+  mm <- mm %>% mutate(d_diff = d_g2 - d_g1)
+  max_dif = mean(mm$d_diff) + 2*sd(mm$d_diff)
+  min_dif = mean(mm$d_diff) - 2*sd(mm$d_diff)
+  mm <- mm %>% mutate(extreme = ifelse((d_diff > max_dif) | (d_diff < min_dif), T, F))
+  
+  p <- mm %>% ggplot(aes(x=d_diff)) + # , fill=extrem
+    geom_histogram(aes(y =..density..), alpha=.7) + theme_classic() +
+    geom_vline(aes(xintercept=median(d_diff)), linetype="dashed") +
+    geom_vline(aes(xintercept=max_dif), linetype="dashed", color="red") +
+    geom_vline(aes(xintercept=min_dif), linetype="dashed", color="red") +
+    xlab(paste(mm$group2, "-", mm$group1, "Item Difficulty"))
+  
+  if(withNormal) {
+    p <- p + stat_function(fun = dnorm, alpha=.6, 
+                           args = list(mean = mean(mm$d_diff), sd = sd(mm$d_diff)))
+  }
+  return(p)
+}

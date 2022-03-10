@@ -10,14 +10,13 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 require(tidyverse)
+require(kableExtra)
 ```
 
-## R Markdown
 
+## Clean ASD CDI:WS data
 
-## Load ASD CDI:WS data
-
-```{r load-asd-ws, eval=F}
+```{r clean-asd-ws, eval=F}
 data_AS_WS <- read.delim("data/ASD CDI data/mci_sentences02.txt", header = TRUE, sep = "\t", dec = ".")
 
 # extracting first row as a descriptive dataframe
@@ -175,9 +174,9 @@ summary(data_all_AS_WS)
 ```
 
 
-## Load ASD CDI:WG data
+## Clean ASD CDI:WG data
 
-```{r load-asd-wg, eval=F}
+```{r clean-asd-wg, eval=F}
 data_AS_WG <- read.delim("data/ASD CDI data/mci_words_gestures01.txt", header = TRUE, sep = "\t", dec = ".")
 
 # extracting first row as a descriptive dataframe
@@ -272,8 +271,27 @@ summary(data_all_AS_WG)
 load("data/ASD_WS.Rdata") # data_clean_AS_WS
 load("data/ASD_WG.Rdata") # data_clean_AS_WG
 
+asd_ws <- data_clean_AS_WS %>% group_by(id, age) %>%
+  summarise(production = sum(value, na.rm=T))
+
+asd_wg <- data_clean_AS_WG %>% group_by(id, age) %>%
+  summarise(production = sum(value, na.rm=T))
+
+# remove extreme ages
+data_clean_AS_WS <- data_clean_AS_WS %>%
+  filter(age>=12, age<=48)
+
+data_clean_AS_WG <- data_clean_AS_WG %>%
+  filter(age>=8, age<=36)
 ```
 
+Note that there are many CDI:WS administrations for ASD children outside the intended age range (16-30 months): `r nrow(subset(asd_ws, age<16))` children aged <16 months (mean production = `r round(mean(subset(asd_ws, age<16)$production), 0)` words), and `r nrow(subset(asd_ws, age>30))` children aged >30 months (mean production = `r round(mean(subset(asd_ws, age>30)$production), 0)` words).
+
+Similarly, there are many CDI:WG administrations for ASD children outside the intended age range (8-16 months): `r nrow(subset(asd_wg, age<8))` children aged <8 months (mean production = `r round(mean(subset(asd_wg, age<8)$production), 0)` words), and `r nrow(subset(asd_wg, age>16))` children aged >16 months (mean production = `r round(mean(subset(asd_wg, age>16)$production), 0)` words).
+
+We will constrain our analysis to those children close to the intended age ranges, extending a wider margin for older children to capture the attenuated language learning of children with ASD.
+Thus, for the CDI:WS we include `r nrow(subset(asd_ws, age>=12 & age<=48))` children aged 12-48 months (removing only `r round(100*(nrow(asd_ws) - nrow(subset(asd_ws, age>=12 & age<=48)))/nrow(asd_ws),1)`% of the data).
+For the CDI:WG we include `r nrow(subset(asd_wg, age>=8 & age<=36))` children aged 8-36 months (removing only `r round(100*(nrow(asd_wg) - nrow(subset(asd_wg, age>=8 & age<=36)))/nrow(asd_wg),1)`% of the data).
 
 ## Load Typically-Developing Data
 
@@ -300,7 +318,6 @@ asd_items = data_clean_AS_WS %>% distinct(category, definition)
 
 #setdiff(wb_items$category, asd_items$category)
 #setdiff(asd_items$category, wb_items$category)
-
 ```
 
 ## DIF Analysis for WS data
@@ -353,6 +370,12 @@ source("helper_functions/DIF_helpers.R")
 `r length(bad_Ss_td)` typically-developing (TD) children were removed from the wordbank data (`r nrow(demo_td)` total) due to their not yet producing any words.
 `r length(bad_Ss_asd)` children with ASD were removed from the NDAR data (`r nrow(demo_asd)` total) due to their not yet producing any words.
 
+```{r}
+d_demo %>% ggplot(aes(x=age, y=production, group=group, color=group)) +
+  geom_point(alpha=.1) + theme_classic() 
+  #geom_smooth(method="lm")
+```
+
 
 ```{r fit-ws-model, eval=F}
 mod_dev_group <- fit_mod_intuitive(d_mat, d_group)
@@ -363,16 +386,36 @@ save(mod_dev_group, file="data/prodWS_IRT_model.Rds")
 ```{r load-ws-model}
 load("data/prodWS_IRT_model.Rds")
 
-plot_glimmer(mod_dev_group, colnames(d_mat), colnames(d_mat), plotName="GLIMMER_asd_prodWS")
+#plot_glimmer(mod_dev_group, colnames(d_mat), colnames(d_mat), 
+#             plotName="GLIMMER_asd_prodWS_age12-48mos")
 
+mm_asd <- extract_group_df(mod_dev_group, groups=c("TD","ASD"))
+#dif_hist <- item_difficulty_difference_histogram(mm_asd)
+
+thresh = median(mm_asd$d_diff_abs) + 2*sd(mm_asd$d_diff_abs)
+big_dif = mm_asd[which(mm_asd$d_diff_abs > thresh),]
+
+dif_histn <- item_difficulty_difference_histogram(mm_asd, withNormal = T)
+print(dif_histn)
 ```
 
+The majority of items are easier for TD than for ASD children. 
+We examine the extrema: items with an absolute difficulty difference of at least 2 standard deviations (|d_diff| = `r round(thresh,2)`; red dotted lines in histogram).
+These `r nrow(big_dif)` extrema are listed below.
+
+```{r}
+big_dif %>% arrange(d_diff) %>% 
+  relocate(definition) %>%
+  rename(d_TD=d_g1, d_ASD=d_g2) %>%
+  dplyr::select(-a1, -group1, -group2) %>%
+  kable(format = "html", table.attr = "style='width:30%;'", digits=2)
+```
 
 
 
 # CDI:WG Production
 
-```{r}
+```{r, eval=F}
 base::load("data/eng_wg_raw_data.Rds")
 
 d_wg <- eng_wg %>%
@@ -387,9 +430,8 @@ asd_items = data_clean_AS_WG %>% distinct(definition)
 
 # match ASD and wordbank defs:
 intersect(wg_items$definition, asd_items$definition) # 394/396
-sort(setdiff(wg_items$definition, asd_items$definition)) # back throw
-sort(setdiff(asd_items$definition, wg_items$definition)) # backyard_1
-
+sort(setdiff(wg_items$definition, asd_items$definition)) # back throw <- two WG items
+sort(setdiff(asd_items$definition, wg_items$definition)) # backyard_1  <- 1 unmatched NDAR item..
 
 ```
 
