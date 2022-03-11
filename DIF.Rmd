@@ -384,10 +384,15 @@ save(mod_dev_group, file="data/prodWS_IRT_model.Rds")
 ```
 
 ```{r load-ws-model}
-load("data/prodWS_IRT_model.Rds")
-
+load("data/prodWS_IRT_model.Rds") # 12-48 mos ASD
 #plot_glimmer(mod_dev_group, colnames(d_mat), colnames(d_mat), 
 #             plotName="GLIMMER_asd_prodWS_age12-48mos")
+
+#load("data/prodWS_IRT_model_16-48mos.Rds")
+#plot_glimmer(mod_dev_group, colnames(d_mat), colnames(d_mat), 
+#             plotName="GLIMMER_asd_prodWS_age16-48mos")
+# doesn't make a difference whether we exclude 12-15 month-old ASD kids or not
+
 
 mm_asd <- extract_group_df(mod_dev_group, groups=c("TD","ASD"))
 #dif_hist <- item_difficulty_difference_histogram(mm_asd)
@@ -404,11 +409,29 @@ We examine the extrema: items with an absolute difficulty difference of at least
 These `r nrow(big_dif)` extrema are listed below.
 
 ```{r}
+big_dif <- big_dif %>% left_join(wb_items)
+
 big_dif %>% arrange(d_diff) %>% 
-  relocate(definition) %>%
+  relocate(category, definition) %>%
   rename(d_TD=d_g1, d_ASD=d_g2) %>%
   dplyr::select(-a1, -group1, -group2) %>%
-  kable(format = "html", table.attr = "style='width:30%;'", digits=2)
+  kable(format = "html", table.attr = "style='width:50%;'", digits=2)
+```
+
+```{r}
+sort(table(big_dif$category)) %>% kable(col.names=c("Category","Frequency"))
+```
+
+Mostly people and action words.
+
+## Ability vs. Sumscore by Age
+
+```{r}
+d_demo <- d_demo %>% 
+  left_join(tibble(data_id = rownames(d_mat), 
+                   ability = fscores(mod_dev_group, method = "MAP")[,1]))
+# MAP: Warning: The following factor score estimates failed to converge successfully:
+#  2448,2750
 ```
 
 
