@@ -293,6 +293,7 @@ We will constrain our analysis to those children close to the intended age range
 Thus, for the CDI:WS we include `r nrow(subset(asd_ws, age>=12 & age<=48))` children aged 12-48 months (removing only `r round(100*(nrow(asd_ws) - nrow(subset(asd_ws, age>=12 & age<=48)))/nrow(asd_ws),1)`% of the data).
 For the CDI:WG we include `r nrow(subset(asd_wg, age>=8 & age<=36))` children aged 8-36 months (removing only `r round(100*(nrow(asd_wg) - nrow(subset(asd_wg, age>=8 & age<=36)))/nrow(asd_wg),1)`% of the data).
 
+
 ## Load Typically-Developing Data
 
 
@@ -371,9 +372,31 @@ source("helper_functions/DIF_helpers.R")
 `r length(bad_Ss_asd)` children with ASD were removed from the NDAR data (`r nrow(demo_asd)` total) due to their not yet producing any words.
 
 ```{r}
-d_demo %>% ggplot(aes(x=age, y=production, group=group, color=group)) +
-  geom_point(alpha=.1) + theme_classic() 
-  #geom_smooth(method="lm")
+#d_ag <- d_demo %>% group_by(age, group) %>%
+#  tidyboot::tidyboot_mean(production)
+require(gamlss)
+
+d_demo <- d_demo %>% mutate(prop_produced = production / 680) %>%
+   mutate(prop_produced = case_when(prop_produced == 0 ~ 0.001,
+                                    prop_produced == 1 ~ 0.999,
+                                    TRUE ~ prop_produced)) # can't have 1 or 0
+
+
+gam_mod <- gamlss(prop_produced ~ pbm(age, lambda = 10000),
+                 sigma.formula = ~ pbm(age, lambda = 10000),
+                 family = BE,
+                 data = d_demo)
+
+cents <- centiles.pred(gam_mod, cent = c(90, 75, 50, 25, 10),
+                       xname = "age", xvalues = 12:48) %>%
+  tibble() %>% pivot_longer(2:6, names_to = "percentile", values_to = "pred") %>%
+  rename(age=x)
+
+
+ggplot(data=d_demo, aes(x=jitter(age))) +
+  geom_point(data=d_demo, alpha=.1, aes(y=production, color=group, group=group)) + 
+  geom_line(data=cents, aes(x=age, y=pred * 680, linetype = percentile)) + 
+  theme_classic() + xlab("Age (months)") + ylab("Production Sumscore")
 ```
 
 
@@ -456,5 +479,32 @@ intersect(wg_items$definition, asd_items$definition) # 394/396
 sort(setdiff(wg_items$definition, asd_items$definition)) # back throw <- two WG items
 sort(setdiff(asd_items$definition, wg_items$definition)) # backyard_1  <- 1 unmatched NDAR item..
 
+```
+
+
+```{r plot-wg-data, echo=F}
+require(gamlss)
+
+d_demo_wg <- d_demo_wg %>% mutate(prop_produced = production / 396) %>%
+   mutate(prop_produced = case_when(prop_produced == 0 ~ 0.001,
+                                    prop_produced == 1 ~ 0.999,
+                                    TRUE ~ prop_produced)) # can't have 1 or 0
+
+
+gam_mod <- gamlss(prop_produced ~ pbm(age, lambda = 10000),
+                 sigma.formula = ~ pbm(age, lambda = 10000),
+                 family = BE,
+                 data = d_demo)
+
+cents <- centiles.pred(gam_mod, cent = c(90, 75, 50, 25, 10),
+                       xname = "age", xvalues = 12:48) %>%
+  tibble() %>% pivot_longer(2:6, names_to = "percentile", values_to = "pred") %>%
+  rename(age=x)
+
+
+ggplot(data=d_demo, aes(x=jitter(age))) +
+  geom_point(data=d_demo, alpha=.1, aes(y=production, color=group, group=group)) + 
+  geom_line(data=cents, aes(x=age, y=pred * 680, linetype = percentile)) + 
+  theme_classic() + xlab("Age (months)") + ylab("Production Sumscore")
 ```
 
