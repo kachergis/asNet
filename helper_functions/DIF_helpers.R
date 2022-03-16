@@ -56,12 +56,12 @@ extract_group_df <- function(group_model, groups=c("Male","Female")) {
     mutate(definition = rownames(coef(group_model, simplify=T)[[groups[1]]]$items),
            group1 = groups[1],
            group2 = groups[2]) %>%
-    select(-g, -u) %>%
+    dplyr::select(-g, -u) %>%
     #mutate(d = -d) %>% # from easiness to difficulty
     rename(d_g1 = d) 
   Fit = as_tibble(coef(group_model, simplify=T)[[groups[2]]]$items) %>%
     mutate(definition = rownames(coef(group_model, simplify=T)[[groups[2]]]$items)) %>%
-    select(-g, -u) %>%
+    dplyr::select(-g, -u) %>%
     #mutate(d = -d) %>% # from easiness to difficulty
     rename(d_g2 = d) 
     
