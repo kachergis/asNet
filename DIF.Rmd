@@ -508,8 +508,8 @@ demo_asd_wg <- data_clean_AS_WG %>% rename(data_id=id) %>%
 # no overlap in data_ids, right?
 #intersect(demo_td_wg$data_id, demo_asd_wg$data_id) # 0 - good
 
-bad_Ss_td = demo_td[which(demo_td$production==0),]$data_id # 9
-bad_Ss_asd = demo_asd[which(demo_asd$production==0),]$data_id 
+bad_Ss_td = demo_td_wg[which(demo_td_wg$production==0),]$data_id # 241
+bad_Ss_asd = demo_asd_wg[which(demo_asd_wg$production==0),]$data_id # 5363
 
 # combine data
 d_mat_wg <- rbind(td_mat_wg, asd_mat_wg) %>% filter(!is.element(data_id, c(bad_Ss_asd, bad_Ss_td)))
@@ -556,7 +556,6 @@ ggplot(data=d_demo_wg, aes(x=jitter(age))) +
 
 ```{r fit-wg-model, eval=F}
 mod_dev_group <- fit_mod_intuitive(d_mat_wg, d_group)
-# Warning: data contains response patterns with only NAs
 save(mod_dev_group, file="data/prodWG_IRT_model.Rds")
 ```
 
@@ -576,7 +575,7 @@ dif_histn_wg <- item_difficulty_difference_histogram(mm_asd_wg, withNormal = T)
 print(dif_histn_wg)
 ```
 
-The majority of items are easier for TD than for ASD children. 
+The majority of the items are much easier for TD than for ASD children. 
 We examine the extrema: items with an absolute difficulty difference of at least 2 standard deviations (|d_diff| = `r round(thresh_wg,2)`; red dotted lines in histogram).
 These `r nrow(big_dif_wg)` extrema are listed below.
 
