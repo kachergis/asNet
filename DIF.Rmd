@@ -188,10 +188,9 @@ summary(data_all_AS_WS)
 Note: found a problem in the NDAR description file -- mcg_vc18_back is given the definition "backyard" (making a duplicate) instead of "back".
 Also, "throw" (col 517) was left out of previous semantic network growth analyses.
 
-GK ToDo: still need to add collection_id, dataset_id, test_dat, sex, and src_subject_id to WG ASD data
-
 ```{r clean-asd-wg, eval=F}
-data_AS_WG <- read.delim("data/ASD CDI data/mci_words_gestures01.txt", header = TRUE, sep = "\t", dec = ".") %>% filter(mcg_vc_totcom != "999") # or _totpr for production?
+data_AS_WG <- read.delim("data/ASD CDI data/mci_words_gestures01.txt", header = TRUE, sep = "\t", dec = ".") %>% filter(mcg_vc_totcom != "999")
+# filter(mcg_vc_totpr != "999") - for production?
 
 # extracting first row as a descriptive dataframe
 description_WG <- data_AS_WG[1:1,]
@@ -205,7 +204,7 @@ eliminated_WG <- data_AS_WG %>%
 #using mci_words_gestures01_id as a distinctive id and The NDAR Global Unique Identifier 
 
 data_raw_AS_WG <- data_AS_WG %>%
-  dplyr::select(c("mci_words_gestures01_id","subjectkey","interview_age", 59:453, 517))
+  dplyr::select(c("collection_id","dataset_id","sex","mci_words_gestures01_id","subjectkey","interview_age", 59:453, 517))
 
 colnames(data_raw_AS_WG) <- as.character(unlist(data_raw_AS_WG[1,])) #unlist the row
 data_raw_AS_WG = data_raw_AS_WG[-1, ]
@@ -221,12 +220,14 @@ data_raw_AS_WG <- data_raw_AS_WG %>%
   rename(id = "mci_words_gestures01_id",
          GUID = "The NDAR Global Unique Identifier (GUID) for research subject", 
          age = "Age in months at the time of the interview/test/sampling/imaging.",
-         house = "MacArthur Words and Gestures: Vocabulary Checklist: House") %>%
+         house = "MacArthur Words and Gestures: Vocabulary Checklist: House",
+         sex = "Sex of the subject") %>%
   mutate(age = as.numeric(as.character(age)))
 
 
 data_clean_AS_WG <- data_raw_AS_WG %>%
-  gather(key = "definition", value = "value", -c(id,GUID,age)) %>%
+  gather(key = "definition", value = "value", 
+         -c(id,GUID,age,sex,dataset_id,collection_id)) %>%
   #separate(definition, c("category","definition"),sep = "\\. ") %>%
   mutate_all(na_if,"",) %>% #if blank then fill in NA
    mutate(value = ifelse(value == 0, FALSE, TRUE))
@@ -235,7 +236,7 @@ data_all_AS_WG <- data_clean_AS_WG %>%
      group_by(definition, age) %>%
        summarise(num_true = sum(value, na.rm = TRUE),
                  num_false = n() - num_true,
-                 prop= num_true/n())
+                 prop = num_true/n())
 
 data_clean_AS_WG <- data_clean_AS_WG %>% 
   mutate(definition = case_when(
@@ -528,6 +529,29 @@ d_demo <- d_demo %>%
 
 # CDI:WG Production
 
+### Examine ASD WG datasets
+
+```{r}
+data_clean_AS_WG %>% group_by(id, age, sex, dataset_id) %>%
+  summarise(comprehension = sum(value, na.rm=T)) %>%
+  group_by(dataset_id) %>%
+  summarise(min_age = min(age), max_age = max(age), mean_age = mean(age),
+            n = n(), mean_comp = mean(comprehension)) %>%
+  arrange(desc(n)) %>%
+  kable(format = "html", table.attr = "style='width:50%;'", digits=1)
+```
+
+Datasets with all 0 comprehension scores: c(12095, 9138, 10754, 11574, 8703, 8667, 18066, 14458, 17999, 12942, 11717, 8368, 17935, 8176, 8370, 8535, 9507, 12891, 12820, 12790, 8532, 8912, 8922)
+10754 and 11574 have identical age ranges, mean ages, and Ns, as do 8176 and 8370.
+16641 and 14747 have identical age ranges, mean ages, Ns, and average comprehension scores.
+After removing all of the 0-comprehension datasets, there are only 3829 participants.
+
+```{r}
+bad_asd_wg_datasets = c(12095, 9138, 10754, 11574, 8703, 8667, 18066, 14458, 17999, 12942, 11717, 8368, 17935, 8176, 8370, 8535, 9507, 12891, 12820, 12790, 8532, 8912, 8922)
+data_clean_AS_WG <- data_clean_AS_WG %>% filter(!is.element(dataset_id, bad_asd_wg_datasets))
+```
+
+
 ```{r, echo=F}
 base::load("data/eng_wg_raw_data.Rds")
 
@@ -614,7 +638,7 @@ gam_mod_asd <- gamlss(prop_produced ~ pbm(age, lambda = 10000),
                  family = BE, data = demo_asd_wg)
 
 cents_asd_wg <- centiles.pred(gam_mod_asd, cent = c(90, 75, 50, 25, 10),
-                       xname = "age", xvalues = 8:36) %>%
+                       xname = "age", xvalues = 8:48) %>%
   tibble() %>% pivot_longer(2:6, names_to = "percentile", values_to = "pred") %>%
   rename(age=x)
 
@@ -630,8 +654,8 @@ p1 <- ggplot(data=demo_td_wg, aes(x=jitter(age))) +
   theme_classic() + xlab("Age (months)") + ylab("Production Sumscore") +
   ggtitle("Typically-Developing")
 
-p2 <- ggplot(data=demo_asd_wg, aes(x=jitter(age))) +
-  geom_point(data=demo_asd_wg, alpha=.1, aes(y=production)) + 
+p2 <- ggplot(data=demo_asd_wg %>% filter(age<60), aes(x=jitter(age))) +
+  geom_point(data=demo_asd_wg %>% filter(age<60), alpha=.1, aes(y=production)) + 
   geom_line(data=cents_asd_wg, aes(x=age, y=pred * 396, linetype = percentile)) + 
   theme_classic() + xlab("Age (months)") + ylab("Production Sumscore") + 
   ggtitle("ASD")
