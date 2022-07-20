@@ -1,0 +1,435 @@
+---
+title: "Prep data"
+author: "ASD CDI team"
+date: '2022-07-19'
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(knitr)
+```
+
+This Rmd produces cached data files.
+
+
+# Load Typically-Developing Data
+
+
+```{r load-wordbank-data, eval=FALSE}
+# CDI:WS
+base::load("data/eng_ws_raw_data.Rds")
+
+data_TD_WS <- eng_ws %>%
+  mutate(produces = value == "produces") %>%
+  filter(!is.na(category)) %>% 
+  dplyr::select(data_id, produces, age, production, sex, 
+                ethnicity, mom_ed, category, definition) %>%
+  mutate(form="WS")
+
+save(data_TD_WS, file="data/TD_WS.Rdata")
+```
+
+
+## Clean ASD CDI:WS data
+
+Lots of data munging
+
+```{r clean-asd-ws, eval=FALSE}
+data_AS_WS <- read.delim("data/mci_sentences02.txt", 
+                         header = TRUE, sep = "\t", dec = ".") %>% 
+  filter(mcs_vc_total != "999")
+
+# extracting first row as a descriptive dataframe
+description_WS <- data_AS_WS[1:1,]
+description_WS <- as.data.frame(t(description_WS))
+names(description_WS) <- "description"
+
+
+# what we get rid of:
+eliminated_WS <- data_AS_WS %>%
+  dplyr::select(c(701:709,780:850)) %>%
+  slice(1:1) %>%
+  gather(key = "Column names", value = "Description")#%>%
+  #head(10)
+
+# grammar items (past tense, future, not present, etc.)
+description_WS[701:709,]
+# complexity and examples (e.g. longest sentences)
+description_WS[780:850,]
+
+#using mci_sentences02_id	as a distinctive id and The NDAR Global Unique Identifier 
+data_raw_AS_WS <- data_AS_WS %>%
+  dplyr::select(c("mci_sentences02_id","subjectkey","interview_age", 
+                  "collection_id", "dataset_id", "interview_date", 
+                  "src_subject_id", "sex", 21:779)) %>% # starting from 785 is complexity. we kept vocabs, word endings, word forms.
+  dplyr::select(-(689:697))
+  #dplyr::select(-(684:692)) # before adding interview_age -> sex...
+
+colnames(data_raw_AS_WS) <- as.character(unlist(data_raw_AS_WS[1,])) #unlist the row
+data_raw_AS_WS = data_raw_AS_WS[-1, ]
+
+data_raw_AS_WS <- data_raw_AS_WS %>%
+  rename(id = "mci_sentences02_id",
+         GUID = "The NDAR Global Unique Identifier (GUID) for research subject", 
+         age = "Age in months at the time of the interview/test/sampling/imaging.",
+         test_date = "Date on which the interview/genetic test/sampling/imaging/biospecimen was completed. MM/DD/YYYY",
+         src_subject_id = "Subject ID how it's defined in lab/project",
+         sex = "Sex of the subject") %>%
+  mutate(age = as.numeric(as.character(age)))
+
+data_clean_AS_WS <- data_raw_AS_WS %>%
+  gather(key = "definition", value = "value", 
+         -c(id,GUID,age,collection_id,dataset_id,test_date,src_subject_id,sex)) %>%
+  separate(definition, c("category","definition"),sep = "\\. ") %>%
+  mutate_all(na_if,"",)%>% #if blank then fill in NA
+   mutate(value = ifelse(value == 0, FALSE, TRUE))
+
+data_all_AS_WS <- data_clean_AS_WS %>%
+     group_by(category, definition, age) %>%
+       summarise(num_true = sum(value, na.rm = TRUE),
+                 num_false = n() - num_true,
+                 prop = num_true/n())
+
+# unique(data_all_AS_WS$category)
+
+data_clean_AS_WS <- data_clean_AS_WS %>% filter(category!="Word forms, noun", 
+                                                category!="Word forms, verbs",
+                                                category!="Word endings, nouns",
+                                                category!="Word endings, verbs") %>%
+  mutate(category = case_when(category=="Sound Effects and Animal Sounds" ~ "sounds",
+                              category=="Animals (Real or Toy)" ~ "animals",
+                              category=="Vehicles (Real or Toy)" ~ "vehicles",
+                              category=="Food and Drink" ~ "food_drink",
+                              category=="Clothinq" ~ "clothing",
+                              category=="Body Parts" ~ "body_parts",
+                              category=="Small Household Items" ~ "household",
+                              category=="Furniture and Rooms" ~ "furniture_rooms",
+                              category=="Outside Thlnqs" ~ "outside",
+                              category=="Action Words" ~ "action_words",
+                              category=="Places to Go" ~ "places",
+                              category=="Helping Verbs" ~ "helping_verbs",
+                              category=="Connectinq Words" ~ "connecting_words",
+                              category=="Descriptive Words" ~ "descriptive_words",
+                              category=="Words About Time" ~ "time_words",
+                              category=="Quantifiers and Articles" ~ "quantifiers",
+                              category=="Games and Routines" ~ "games_routines",
+                              category=="Question Words" ~ "question_words",
+                              category=="Prepositions and Locations" ~ "locations",
+                              category=="Helpinq Verbs" ~ "helping_verbs",
+                              TRUE ~ category)) %>%
+  mutate(category = tolower(category), 
+         definition = case_when(definition=="baa" ~ "baa baa",
+                                definition=="cockadoodle" ~ "cockadoodledoo",
+                                definition=="quack" ~ "quack quack",
+                                definition=="uhoh" ~ "uh oh",
+                                definition=="woof" ~ "woof woof",
+                                definition=="yum" ~ "yum yum",
+                                definition=="chicken" & category=="food_drink" ~ "chicken (food)",
+                                definition=="chicken" ~ "chicken (animal)",
+                                definition=="fish" & category=="food_drink" ~ "fish (food)",
+                                definition=="fish" ~ "fish (animal)",
+                                definition=="playdough" ~ "play dough",
+                                definition=="vagina" ~ "vagina*",
+                                definition=="penis" ~ "penis*",
+                                definition=="frenchfries" ~ "french fries",
+                                definition=="greenbeans" ~ "green beans",
+                                definition=="toy" ~ "toy (object)",
+                                definition=="drink" & category=="action_words" ~ "drink (action)",
+                                definition=="drink" ~ "drink (beverage)",
+                                definition=="gasstation" ~ "gas station",
+                                definition=="orange" & category=="food_drink" ~ "orange (food)",
+                                definition=="orange" ~ "orange (description)",
+                                definition=="allgone" ~ "all gone",
+                                definition=="water" & category=="food_drink" ~ "water (beverage)",
+                                definition=="water" ~ "water (not beverage)",
+                                definition=="feet" ~ "foot",
+                                definition=="callph" ~ "call (on phone)",
+                                definition=="clean" & category=="action_words" ~ "clean (action)",
+                                definition=="clean" ~ "clean (description)",
+                                definition=="owie  booboo" ~ "owie/boo boo",
+                                definition=="dont" ~ "don't",
+                                definition=="5bowl" ~ "bowl",
+                                definition=="can" & category=="household" ~ "can (object)",
+                                definition=="can" & category=="helping_verbs" ~ "can (auxiliary)",
+                                definition=="rockingchair" ~ "rocking chair",
+                                definition=="alot" ~ "a lot",
+                                definition=="buttocks/bottom" ~ "buttocks/bottom*",
+                                definition=="daddy" ~ "daddy*",
+                                definition=="childname" ~ "child's own name",
+                                definition=="washingmachine" ~ "washing machine",
+                                definition=="try" ~ "try/try to",
+                                definition=="work" & category=="places" ~ "work (place)",
+                                definition=="work" ~ "work (action)",
+                                definition=="giveme five" ~ "give me five!",
+                                definition=="mommy" ~ "mommy*",
+                                definition=="grandma" ~ "grandma*",
+                                definition=="church" ~ "church*",
+                                definition=="daddy" ~ "daddy*",
+                                definition=="grandpa" ~ "grandpa*",
+                                definition=="patty cake" ~ "pattycake",
+                                definition=="dry" & category=="action_words" ~ "dry (action)",
+                                definition=="dry" ~ "dry (description)",
+                                definition=="lemme" ~ "lemme/let me",
+                                definition=="tissklee" ~ "tissue/kleenex",
+                                definition=="did" ~ "did/did ya",
+                                definition=="gonna get  you" ~ "gonna get you!",
+                                definition=="peanutbutter" ~ "peanut butter",
+                                definition=="playpen" ~ "play pen",
+                                definition=="potatochip" ~ "potato chip",
+                                definition=="wanna" ~ "wanna/want to",
+                                definition=="watch" & category=="action_words" ~ "watch (action)",
+                                definition=="watch" ~ "watch (object)",
+                                definition=="dress" ~ "dress (object)",
+                                definition=="gonna" ~ "gonna/going to",
+                                definition=="gotta" ~ "gotta/got to",
+                                definition=="hafta" ~ "hafta/have to",
+                                definition=="highchair" ~ "high chair",
+                                definition=="lawnmower" ~ "lawn mower",
+                                definition=="little" ~ "little (description)",
+                                definition=="petname" ~ "pet's name",
+                                definition=="so big" ~ "so big!",
+                                definition=="need" ~ "need/need to",
+                                definition=="shush" ~ "shh/shush/hush",
+                                definition=="swing" & category=="action_words" ~ "swing (action)",
+                                definition=="swing" ~ "swing (object)",
+                                definition=="slide" & category=="action_words" ~ "slide (action)",
+                                definition=="slide" ~ "slide (object)",
+                                TRUE ~ definition))
+
+save(data_clean_AS_WS, file="data/ASD_WS.Rdata")
+# summary(data_all_AS_WS)
+```
+
+
+## Clean ASD CDI:WG data
+
+Note: found a problem in the NDAR description file -- mcg_vc18_back is given the definition "backyard" (making a duplicate) instead of "back".
+Also, "throw" (col 517) was left out of previous semantic network growth analyses.
+
+```{r clean-asd-wg, eval=FALSE}
+data_AS_WG <- read.delim("data/mci_words_gestures01.txt", 
+                         header = TRUE, sep = "\t", dec = ".") %>% 
+  filter(mcg_vc_totcom != "999")
+
+# extracting first row as a descriptive dataframe
+description_WG <- data_AS_WG[1:1,]
+description_WG <- as.data.frame(t(description_WG))
+names(description_WG) <- "description"
+
+# we only kept vocab 
+eliminated_WG <- data_AS_WG %>%
+  dplyr::select(c(23:58,454:520))
+
+#using mci_words_gestures01_id as a distinctive id and The NDAR Global Unique Identifier 
+
+data_raw_AS_WG <- data_AS_WG %>%
+  dplyr::select(c("collection_id","dataset_id","sex","mci_words_gestures01_id","subjectkey","interview_age", 59:453, 517))
+
+colnames(data_raw_AS_WG) <- as.character(unlist(data_raw_AS_WG[1,])) #unlist the row
+data_raw_AS_WG = data_raw_AS_WG[-1, ]
+
+# what are the duplicated
+AS_WG_duplicated <- data_raw_AS_WG[duplicated(colnames(data_raw_AS_WG))] # can call colnames 
+
+# making column names unique
+names(data_raw_AS_WG) <- make.unique(names(data_raw_AS_WG), sep="_")
+
+
+data_raw_AS_WG <- data_raw_AS_WG %>%
+  rename(id = "mci_words_gestures01_id",
+         GUID = "The NDAR Global Unique Identifier (GUID) for research subject", 
+         age = "Age in months at the time of the interview/test/sampling/imaging.",
+         house = "MacArthur Words and Gestures: Vocabulary Checklist: House",
+         sex = "Sex of the subject") %>%
+  mutate(age = as.numeric(as.character(age)))
+
+
+data_clean_AS_WG <- data_raw_AS_WG %>%
+  gather(key = "definition", value = "value", 
+         -c(id,GUID,age,sex,dataset_id,collection_id)) %>%
+  #separate(definition, c("category","definition"),sep = "\\. ") %>%
+  mutate_all(na_if,"",) %>% #if blank then fill in NA
+   mutate(value = ifelse(value == 0, FALSE, TRUE))
+
+data_all_AS_WG <- data_clean_AS_WG %>%
+     group_by(definition, age) %>%
+       summarise(num_true = sum(value, na.rm = TRUE),
+                 num_false = n() - num_true,
+                 prop = num_true/n())
+
+data_clean_AS_WG <- data_clean_AS_WG %>% 
+  mutate(definition = case_when(
+    definition=="bye or bye bye" ~ "bye",
+    definition=="chicken" ~ "chicken (animal)",
+    definition=="chicken_1" ~ "chicken (food)",
+    definition=="peek-a-boo" ~ "peekaboo",
+    definition=="water" ~ "water (beverage)",
+    definition=="water_1" ~ "water (not beverage)",
+    definition=="church" ~ "church*",
+    definition=="clean" ~ "clean (action)",
+    definition=="clean_1" ~ "clean (description)",
+    definition=="daddy" ~ "daddy*",
+    definition=="dress" ~ "dress (object)",
+    definition=="towl" ~ "towel",
+    definition=="grandpa" ~ "grandpa*",
+    definition=="grandma" ~ "grandma*",
+    definition=="mommy" ~ "mommy*",
+    definition=="owie/ boo boo" ~ "owie/boo boo",
+    definition=="little" ~ "little (description)",
+    definition=="drink" ~ "drink (beverage)",
+    definition=="drink_1" ~ "drink (action)",
+    definition=="dry" ~ "dry (description)",
+    definition=="fire truck" ~ "firetruck",
+    definition=="fish" ~ "fish (animal)",
+    definition=="fish_1" ~ "fish (food)",
+    definition=="toy" ~ "toy (object)",
+    definition=="teddy bear" ~ "teddybear",
+    definition=="swing" ~ "swing (object)",
+    definition=="swing_1" ~ "swing (action)",
+    definition=="work" ~ "work (place)",
+    definition=="orange" ~ "orange (food)",
+    definition=="patty cake" ~ "pattycake",
+    definition=="slide" ~ "slide (object)",
+    definition=="watch" ~ "watch (object)",
+    definition=="watch_1" ~ "watch (action)",
+    definition=="backyard_1" ~ "back", # "mcg_vc18_back"
+    TRUE ~ definition
+  ))
+
+
+save(data_clean_AS_WG, file="data/ASD_WG.Rdata")
+
+# summary(data_all_AS_WG)
+```
+
+# Merging in dataset ID information and cleaning
+
+We need to consider which ASD studies are relevant to include (e.g., some may be from more severe cases than others), as well as which have oddities (e.g., duplicate/mismatched subject IDs).
+At a first glance at the summary by dataset_id, a few of the datasets have all 0 production scores (e.g., dataset_id = c(9137, 17935, 21697, 17999, 17151)).
+Are these true 0 CDI scores, or are the CDI data for these studies somehow missing?
+As these studies comprise 1170 participants (of our 4488 total ASD sample), it is important to know what's going on, and whether or not they should be excluded.
+I also note that studies 17935 and 21697 suspiciously have the same age range, mean_age, and number of subjects -- are these 194 subjects duplicated under different dataset_ids?
+
+For now, I remove all of the datasets without any non-zero production scores.
+
+```{r load-asd-data}
+load("data/ASD_WS.Rdata") # data_clean_AS_WS
+load("data/ASD_WG.Rdata") # data_clean_AS_WG
+load("data/TD_WS.Rdata") # data_TD_WS
+```
+
+```{r}
+AS_WS_summary <- data_clean_AS_WS %>% 
+  group_by(collection_id, age, sex, dataset_id) %>%
+  summarise(production = sum(value, na.rm=T)) %>%
+  group_by(collection_id) %>%
+  summarise(min_age = min(age), 
+            max_age = max(age), 
+            mean_age = mean(age),
+            n = n(), 
+            mean_prod = mean(production)) %>%
+  arrange(desc(n))
+
+AS_WS_summary %>%
+  kable(format = "html", table.attr = "style='width:50%;'", digits=1)
+```
+
+```{r}
+AS_WG_summary <- data_clean_AS_WG %>% 
+  group_by(collection_id, age, sex, dataset_id) %>%
+  summarise(production = sum(value, na.rm=T)) %>%
+  group_by(collection_id) %>%
+  summarise(min_age = min(age), 
+            max_age = max(age), 
+            mean_age = mean(age),
+            n = n(), 
+            mean_prod = mean(production)) %>%
+  arrange(desc(n)) 
+
+AS_WG_summary %>%
+  kable(format = "html", table.attr = "style='width:50%;'", digits=1)
+```
+
+Remove all datasets with all 0 production.
+
+```{r}
+zero_prod_WG <- filter(AS_WG_summary, mean_prod < 1) %>% pull(collection_id)
+zero_prod_WS <- filter(AS_WS_summary, mean_prod < 1) %>% pull(collection_id)
+
+data_clean_AS_WG %<>% filter(!(collection_id %in% zero_prod_WG))
+data_clean_AS_WS %<>% filter(!(collection_id %in% zero_prod_WS))
+```
+
+
+
+```{r}
+data_sources <- read_csv("data/NDA data sources.csv")
+data_clean_AS_WS %<>%
+  mutate(collection_id = as.numeric(collection_id)) %>%
+  left_join(select(data_sources, collection_id, collection_title))
+
+data_clean_AS_WG %<>%
+  mutate(collection_id = as.numeric(collection_id)) %>%
+  left_join(select(data_sources, collection_id, collection_title))
+```
+
+We will constrain our analysis to those children close to the intended age ranges, extending a wider margin for older children to capture the attenuated language learning of children with ASD.
+
+```{r}
+asd_ws <- data_clean_AS_WS %>% 
+  group_by(id, age, sex, dataset_id) %>%
+  summarise(production = sum(value, na.rm=T))
+
+asd_wg <- data_clean_AS_WG %>% 
+  group_by(id, age) %>%
+  summarise(production = sum(value, na.rm=T))
+```
+
+
+Note that there are many CDI:WS administrations for ASD children outside the intended age range (16-30 months): `r nrow(subset(asd_ws, age<16))` children aged <16 months (mean production = `r round(mean(subset(asd_ws, age<16)$production), 0)` words), and `r nrow(subset(asd_ws, age>30))` children aged >30 months (mean production = `r round(mean(subset(asd_ws, age>30)$production), 0)` words).
+
+Similarly, there are many CDI:WG administrations for ASD children outside the intended age range (8-16 months): `r nrow(subset(asd_wg, age<8))` children aged <12 months (mean production = `r round(mean(subset(asd_wg, age<8)$production), 0)` words), and `r nrow(subset(asd_wg, age>16))` children aged >16 months (mean production = `r round(mean(subset(asd_wg, age>16)$production), 0)` words).
+
+Thus, for the CDI:WS we include `r nrow(subset(asd_ws, age>=12 & age<=48))` children aged 12-48 months (removing only `r round(100*(nrow(asd_ws) - nrow(subset(asd_ws, age>=12 & age<=48)))/nrow(asd_ws),1)`% of the data).
+For the CDI:WG we include `r nrow(subset(asd_wg, age>=8 & age<=36))` children aged 8-36 months (removing only `r round(100*(nrow(asd_wg) - nrow(subset(asd_wg, age>=8 & age<=36)))/nrow(asd_wg),1)`% of the data).
+
+```{r}
+data_clean_AS_WG %<>% filter(age>=8, age<=36)
+data_clean_AS_WS %<>% filter(age>=12, age<=48)
+```
+
+# Final dataset stats
+
+```{r}
+data_clean_AS_WG %>% 
+  group_by(collection_id, collection_title, id) %>% 
+  count() %>% 
+  group_by(collection_id, collection_title) %>% 
+  count() %>% 
+  kable()
+```
+
+
+```{r}
+data_clean_AS_WS %>% 
+  group_by(collection_id, collection_title, id) %>% 
+  count() %>% 
+  group_by(collection_id, collection_title) %>% 
+  count() %>% 
+  kable()
+```
+
+# Save data
+
+```{r}
+d_asd_wg <- data_clean_AS_WG
+d_asd_ws <- data_clean_AS_WS
+d_td_ws <- data_TD_WS
+
+save(d_asd_wg, d_asd_ws, d_td_ws,
+     file = "data/cached_data.Rds")
+```
+
