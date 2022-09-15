@@ -5,11 +5,27 @@ date: '2022-07-19'
 output: html_document
 ---
 
+```{r, echo=F}
+require("gamlss")
+
+load("data/cached_data.Rds")
+```
+
 
 ## Production vs. Age
 
 ```{r, echo=F, results=F, message=F, fig.cap="Production sumscores on the CDI:WS for TD vs. ASD children."}
 # Let's show ASD and TD separately
+
+demo_td <- d_td_ws %>% 
+  distinct(data_id, age, production, sex, ethnicity, mom_ed) %>% 
+  mutate(group = "TD")
+
+demo_asd <- d_asd_ws %>% rename(data_id=id) %>%
+  mutate(data_id = as.numeric(data_id),
+         group = "ASD") %>%
+  group_by(data_id, age, group) %>%
+  summarise(production = sum(value, na.rm=T)) 
 
 demo_td <- demo_td %>% mutate(prop_produced = production / 680) %>%
    mutate(prop_produced = case_when(prop_produced == 0 ~ 0.001,

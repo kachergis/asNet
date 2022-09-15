@@ -10,14 +10,13 @@ output: html_document
 
 ```{r}
 
-
-wb_items = d_ws %>% 
+wb_items = d_td_ws %>% 
   distinct(category, definition)
 
 asd_items = data_clean_AS_WS %>% 
   distinct(category, definition)
 
-td_mat <- d_ws %>% dplyr::select(data_id, definition, produces) %>% 
+td_mat <- d_td_ws %>% dplyr::select(data_id, definition, produces) %>% 
   pivot_wider(id_cols = data_id, names_from = definition, values_from = produces)
   
 
@@ -26,7 +25,7 @@ asd_mat <- data_clean_AS_WS %>% rename(data_id=id) %>%
   dplyr::select(data_id, definition, value) %>% 
   pivot_wider(id_cols = data_id, names_from = definition, values_from = value)
 
-demo_td <- d_ws %>% 
+demo_td <- d_td_ws %>% 
   distinct(data_id, age, production, sex, ethnicity, mom_ed) %>% 
   mutate(group = "TD")
 

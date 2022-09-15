@@ -354,6 +354,7 @@ AS_WG_summary %>%
 ```
 
 Remove all datasets with all 0 production.
+(Some of which should certainly not have 0 production, according to their associated NDA webpages and publications, e.g. [1885](https://nda.nih.gov/edit_collection.html?id=1885), [Crandall et al. 2019](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6808365/pdf/JSLHR-62-1787.pdf))
 
 ```{r}
 zero_prod_WG <- filter(AS_WG_summary, mean_prod < 1) %>% pull(collection_id)
@@ -424,7 +425,7 @@ data_clean_AS_WS %>%
 
 # Save data
 
-```{r}
+```{r, eval=F}
 d_asd_wg <- data_clean_AS_WG
 d_asd_ws <- data_clean_AS_WS
 d_td_ws <- data_TD_WS
