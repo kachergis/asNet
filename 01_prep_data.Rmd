@@ -38,7 +38,7 @@ save(data_TD_WS, file="data/TD_WS.Rdata")
 Lots of data munging
 
 ```{r clean-asd-ws, eval=FALSE}
-data_AS_WS <- read.delim("data/mci_sentences02.txt", 
+data_AS_WS <- read.delim("data/ASD CDI data/mci_sentences02.txt", 
                          header = TRUE, sep = "\t", dec = ".") %>% 
   filter(mcs_vc_total != "999")
 
@@ -210,7 +210,7 @@ Note: found a problem in the NDAR description file -- mcg_vc18_back is given the
 Also, "throw" (col 517) was left out of previous semantic network growth analyses.
 
 ```{r clean-asd-wg, eval=FALSE}
-data_AS_WG <- read.delim("data/mci_words_gestures01.txt", 
+data_AS_WG <- read.delim("data/ASD CDI data/mci_words_gestures01.txt", 
                          header = TRUE, sep = "\t", dec = ".") %>% 
   filter(mcg_vc_totcom != "999")
 
@@ -321,9 +321,27 @@ load("data/ASD_WG.Rdata") # data_clean_AS_WG
 load("data/TD_WS.Rdata") # data_TD_WS
 ```
 
+
 ```{r}
-AS_WS_summary <- data_clean_AS_WS %>% 
-  group_by(collection_id, age, sex, dataset_id) %>%
+# data_clean_AS_WS has 8 unique collection_ids, and 20 unique dataset_ids
+# data_clean_AS_WG has 20 unique collection_ids, and 44 unique dataset_ids
+#  -- collection_id (e.g. 2024) can be shared across multiple dataset_ids (9959, 9960, 9961) --> are these the same kids at different ages?
+
+#asd_ws <- data_clean_AS_WS %>% group_by(id, GUID, age, sex, dataset_id) %>%
+#  summarise(production = sum(value, na.rm=T))
+
+#asd_wg <- data_clean_AS_WG %>% group_by(id, GUID, age, sex, dataset_id) %>%
+#  summarise(production = sum(value, na.rm=T))
+
+# remove extreme ages
+#data_clean_AS_WS <- data_clean_AS_WS %>%
+#  filter(age>=12, age<=48)
+
+#data_clean_AS_WG <- data_clean_AS_WG %>%
+#  filter(age>=8, age<=36)
+
+
+data_clean_AS_WS %>% group_by(id, age, sex, dataset_id) %>%
   summarise(production = sum(value, na.rm=T)) %>%
   group_by(collection_id) %>%
   summarise(min_age = min(age), 
@@ -335,6 +353,46 @@ AS_WS_summary <- data_clean_AS_WS %>%
 
 AS_WS_summary %>%
   kable(format = "html", table.attr = "style='width:50%;'", digits=1)
+```
+
+According to the [NDA website](https://nda.nih.gov/contribute/using-the-nda-guid.html), the GUID is a unique identifier for each participant.
+Thus, in the WG dataset there are `r length(unique(data_clean_AS_WG$GUID))` participants, and in the WS dataset there are `r length(unique(data_clean_AS_WS$GUID))` participants.
+The much larger number of rows may represent longitudinal data, or duplicates (e.g., copies of the same participant's CDI administration across multiple datasets, or perhaps collections).
+
+```{r identifying-duplicates}
+# no complete duplicates in data_clean, and none grouped by GUID, age, and production
+
+dim(data_clean_AS_WS %>% distinct(GUID, age, sex, dataset_id)) # 4248
+dim(data_clean_AS_WS %>% distinct(id, GUID, age, sex, dataset_id)) # 4488
+dim(data_clean_AS_WS %>% distinct(id, GUID, age, sex, collection_id)) # 4488
+
+# ids are unique (i.e., administration), whereas GUID identifies a child
+
+asd_ws <- data_clean_AS_WS %>% group_by(id, GUID, age, sex, collection_id) %>%
+  summarise(production = sum(value, na.rm=T))
+# 1940 with collection_id, 4248 with dataset_id, 
+
+asd_wg <- data_clean_AS_WG %>% group_by(id, GUID, age, sex, collection_id) %>%
+  summarise(production = sum(value, na.rm=T))
+# 4780 without dataset_id, 4783 with collection_id, 8091 with dataset_id
+
+#sum(duplicated(asd_wg))
+#sum(duplicated(asd_ws))
+
+#sum(duplicated(asd_ws[,c("age","sex","production","collection_id")]))
+# 3450/4488 ! (1038 unique?)
+
+#sum(duplicated(asd_wg[,c("age","sex","production","collection_id")]))
+# 7003/8488 ! (1485 unique?)
+
+# these are getting some large production scores...adding up multiple administrations??
+asd_wg %>% ggplot(aes(x=age, y=production, color=sex, group=GUID)) + 
+  geom_point(alpha=.2) + geom_line(alpha=.1) + # facet_wrap(. ~ collection_id) +
+  theme_classic()
+
+asd_ws %>% ggplot(aes(x=age, y=production, color=sex, group=GUID)) + 
+  geom_point(alpha=.2) + geom_line(alpha=.1) + # facet_wrap(. ~ collection_id) +
+  theme_classic()
 ```
 
 ```{r}
