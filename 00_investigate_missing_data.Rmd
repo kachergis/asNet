@@ -60,16 +60,13 @@ data_raw_AS_WS <- data_raw_AS_WS %>%
 Loaded data from `r nrow(data_AS_WS)` subjects.
 Which of these have mcs_vc_total=="999"? 
 (A code often used in SPSS for missing data.)
+We show this below by collection_id:
 
 ```{r nines}
-# is any of the "missing" mcs_vc_total data salvageable?
 nnn <- subset(data_AS_WS, mcs_vc_total=="999")
 nnn %>% group_by(collection_id) %>% 
   summarise(n = n()) %>%
   kable()
-# a lot of kids from collections 2024, 6, and 8
-# 2024 2368 2666    6    8 
-#  425   16    8   71   92 
 ```
 
 ## Item-level data
@@ -89,19 +86,39 @@ Out of the `r nrow(nnn)` entries with mcs_vc_total=="999", there are only `r len
 [Collection 2368](https://nda.nih.gov/edit_collection.html?id=2368)'s PI is Susan Swedo, and reported submitting 125 CDI:WS subjects (and 114 CDI:WG).
 
 
+## Empty Vocabulary Columns
+
 ```{r}
-#duplicated(nnn[,100:700])
+data_AS_WS$empty_voc_resp = rowSums(data_AS_WS[,21:700]=="")==680
+
+novoc <- data_AS_WS %>% filter(empty_voc_resp)
+```
+
+`r nrow(novoc)` subjects are entirely blank in their vocabulary columns.
+Below we show the number of subjects with blank vocabulary along with the total N per collection.
+
+```{r}
+blank_n <- novoc %>%
+  group_by(collection_id) %>%
+  summarise(blank_voc_n = n()) 
+
 data_raw_AS_WS %>% 
   distinct(collection_id, id, GUID, age) %>%
   group_by(collection_id) %>%
-  summarise(n=n()) %>%
-  arrange(n) %>%
+  summarise(total_n=n()) %>%
+  left_join(blank_n) %>%
+  arrange(total_n) %>%
   kable()
 ```
+
+Only three collections don't have any subjects with fully blank item-level vocab responses: collection IDs 2664, 1856, and 2026.
 
 There are 3210 subjects in collection 2024 (Vouloumanos)...is that possible?
 5 experiments are listed, Shared Data tab doesn't even mention the CDI, and Data Expected tab only lists 100 Targeted Enrollment for the CDI (shows 0 Subjects Shared).
 There are 17 listed publications, but their abstracts don't have Ns.
+
+
+Now let's look at the WG data.
 
 # NDAR Words & Gestures Data
 
@@ -146,7 +163,9 @@ nnn_wg <- subset(data_AS_WG, mcg_vc_totcom=="999")
 ```
 
 There aren't any "999"s in mcg_vc_totcom, at least.
-But there are a lot entries with no item-level data
+But there are a lot entries with no item-level data...
+
+## Empty Vocabulary Columns
 
 ```{r}
 # sum(duplicated(data_AS_WG[,59:517])) # just the vocab columns
