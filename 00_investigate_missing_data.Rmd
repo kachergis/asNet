@@ -102,21 +102,26 @@ blank_n <- novoc %>%
   group_by(collection_id) %>%
   summarise(blank_voc_n = n()) 
 
-data_raw_AS_WS %>% 
+ws_tab <- data_raw_AS_WS %>% 
   distinct(collection_id, id, GUID, age) %>%
   group_by(collection_id) %>%
   summarise(total_n=n()) %>%
   left_join(blank_n) %>%
-  arrange(total_n) %>%
+  arrange(total_n) 
+
+#sum(subset(ws_tab, is.na(blank_voc_n))$total_n)
+
+ws_tab %>%
   kable()
 ```
 
-Only three collections don't have any subjects with fully blank item-level vocab responses: collection IDs 2664, 1856, and 2026.
+Only four collections don't have any subjects with fully blank item-level vocab responses: collection IDs 2664, 1856, 2368, and 2026, with a total of 830 subjects.
 
 There are 3210 subjects in collection 2024 (Vouloumanos)...is that possible?
 5 experiments are listed, Shared Data tab doesn't even mention the CDI, and Data Expected tab only lists 100 Targeted Enrollment for the CDI (shows 0 Subjects Shared).
 There are 17 listed publications, but their abstracts don't have Ns.
 
+Also, there are `r sum(data_AS_WS[,21:700]=="2")` "2" responses in vocabulary: are some of these WS administrations actually WG administrations? (Where presumably 1="understands" and 2="understands and says"?)
 
 Now let's look at the WG data.
 
@@ -162,6 +167,7 @@ data_raw_AS_WG <- data_raw_AS_WG %>%
 nnn_wg <- subset(data_AS_WG, mcg_vc_totcom=="999")
 ```
 
+Loaded data from `r nrow(data_AS_WG)` subjects.
 There aren't any "999"s in mcg_vc_totcom, at least.
 But there are a lot entries with no item-level data...
 
@@ -183,14 +189,18 @@ blank_n <- novoc %>%
   group_by(collection_id) %>%
   summarise(blank_voc_n = n()) 
 
-data_raw_AS_WG %>% 
+wg_tab <- data_raw_AS_WG %>% 
   distinct(collection_id, id, GUID, age) %>%
   group_by(collection_id) %>%
   summarise(total_n=n()) %>%
   left_join(blank_n) %>%
-  arrange(total_n) %>%
+  arrange(total_n) 
+  
+#sum(subset(wg_tab, is.na(blank_voc_n))$total_n)
+
+wg_tab %>%
   kable()
 ```
 
-
+Eight collections don't have any missing item-level vocabulary data, and have a total of 2814 subjects.
 
