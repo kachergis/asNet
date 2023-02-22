@@ -71,6 +71,12 @@ nnn %>% group_by(collection_id) %>%
 
 ## Item-level data
 
+```{r}
+num_missing = rowSums(data_AS_WS[,21:700]=="")
+unique(unlist(data_raw_AS_WS[,21:700]))
+```
+
+
 But many of these actually have at least some item-level data:
 `r nrow(subset(nnn, mcs_vc1_4_grr!=""))` subjects with non-empty responses (0, 1, or 2) for 'grr'.
 `r nrow(subset(nnn, mcs_vc2_16duck!=""))` subjects with non-empty responses (0, 1, or 2) for 'grr'.
@@ -79,7 +85,7 @@ But many of these actually have at least some item-level data:
 
 At least 62 subjects in collection 2024 and 4 subjects in collection 2368 have item-level data for many of the items.
 [Collection 2024](https://nda.nih.gov/edit_collection.html?id=2024)'s PI is Athena Vouloumanos, and actual enrollment is listed as 209.
-Indeed, there do seem to be redundant rows in our data. 
+Indeed, are many redundant rows in our data. 
 Out of the `r nrow(nnn)` entries with mcs_vc_total=="999", there are only `r length(unique(nnn$subjectkey))` unique subjectkey values, and `r length(unique(nnn$src_subject_id))` unique src_subject_id entries.
 (`r nrow(nnn %>% distinct(subjectkey, interview_age))` distinct subjectkey x interview_age, so mostly not longitudinal data...)
 
@@ -115,13 +121,49 @@ ws_tab %>%
   kable()
 ```
 
-Only four collections don't have any subjects with fully blank item-level vocab responses: collection IDs 2664, 1856, 2368, and 2026, with a total of 830 subjects.
+Only four collections don't have any subjects with fully blank item-level vocab responses: collection IDs 2664, 1856, 2368, and 2026, with a total of 549 subjects.
 
 There are 3210 subjects in collection 2024 (Vouloumanos)...is that possible?
 5 experiments are listed, Shared Data tab doesn't even mention the CDI, and Data Expected tab only lists 100 Targeted Enrollment for the CDI (shows 0 Subjects Shared).
 There are 17 listed publications, but their abstracts don't have Ns.
 
+Looking at unique subject IDs x age in Athena's data:
+
+```{r}
+a_ws <- subset(data_AS_WS, collection_id==2024)
+length(unique(a_ws$subjectkey)) # 139 GUIDs
+length(unique(a_ws$src_subject_id)) # 137 lab IDs
+nrow(a_ws %>% distinct(src_subject_id, interview_age))
+# 510 administrations -- ~4 per subject, longitudinal
+
+nrow(a_ws %>% distinct(src_subject_id, dataset_id)) # 980 admins..
+nrow(a_ws %>% distinct(src_subject_id, dataset_id, interview_age)) # 2959
+
+table(a_ws$src_subject_id, a_ws$dataset_id)
+```
+
+
 Also, there are `r sum(data_AS_WS[,21:700]=="2")` "2" responses in vocabulary: are some of these WS administrations actually WG administrations? (Where presumably 1="understands" and 2="understands and says"?)
+
+
+How does vocab look for the four good collections?
+
+```{r}
+good_ws_col <- c(2664, 1856, 2368, 2026)
+
+good_ws_dat <- data_AS_WS %>% filter(is.element(collection_id, good_ws_col))
+
+num_missing = rowSums(good_ws_dat[,21:700]=="")
+table(num_missing)
+# only 305 subjects with no data missing; several with 600+ missing
+
+sum(good_ws_dat[,21:700]=="2") # 8 "2" responses..
+
+rowSums(apply(good_ws_dat[,21:700], 1, as.numeric))
+hist(as.numeric(good_ws_dat$mcs_vc_total)) # some 999s to remove
+
+```
+
 
 Now let's look at the WG data.
 
@@ -203,4 +245,40 @@ wg_tab %>%
 ```
 
 Eight collections don't have any missing item-level vocabulary data, and have a total of 2814 subjects.
+
+Athena's WG subjects:
+
+```{r}
+a_wg <- subset(data_AS_WG, collection_id==2024) # 1957
+length(unique(a_wg$subjectkey)) # 143 GUIDs
+length(unique(a_wg$src_subject_id)) # 137 lab IDs
+nrow(a_wg %>% distinct(src_subject_id, interview_age)) # 261
+nrow(a_wg %>% distinct(subjectkey, interview_age)) # 265
+# 261 - 2 administrations per subject?
+
+a_wg %>% distinct(src_subject_id, interview_age) %>%
+  arrange(src_subject_id)
+
+# yet none of these 1957 rows are duplicates:
+sum(duplicated(a_wg))
+sum(duplicated(a_wg[9:528])) # 1672
+
+sum(duplicated(a_ws)) # nor in WS
+sum(duplicated(a_ws[9:854])) # but 2458 if you ignore the first several columns..
+
+
+sum(duplicated(a_ws[20:854]))
+
+length(intersect(a_wg$subjectkey, a_ws$subjectkey)) # 128 have WG and WS
+length(intersect(a_wg$src_subject_id, a_ws$src_subject_id))
+```
+
+```{r}
+wg_id_dataset_age = table(a_wg$subjectkey, a_wg$dataset_id, a_wg$interview_age)
+wg_id_dataset_age[which(wg_id_dataset_age>1)] # 178 appear twice
+
+# GUIDs that appear more than once per dataset and age
+ws_id_dataset_age = table(a_ws$subjectkey, a_ws$dataset_id, a_ws$interview_age)
+ws_id_dataset_age[which(ws_id_dataset_age>1)] # 250 appear twice
+```
 

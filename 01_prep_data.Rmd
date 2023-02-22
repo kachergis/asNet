@@ -87,6 +87,9 @@ data_clean_AS_WS <- data_raw_AS_WS %>%
   mutate_all(na_if,"",)%>% #if blank then fill in NA
    mutate(value = ifelse(value == 0, FALSE, TRUE))
 
+# from mci_sentences02_definitions.csv:
+# "0 = No; 1 = Yes (Says and Understands); 2 = Understands; 3 = Says"
+
 data_all_AS_WS <- data_clean_AS_WS %>%
      group_by(category, definition, age) %>%
        summarise(num_true = sum(value, na.rm = TRUE),
